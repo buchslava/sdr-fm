@@ -1,31 +1,48 @@
-import { DecimalPipe } from "@angular/common";
 import { Component } from "@angular/core";
-import { FormsModule } from "@angular/forms";
 import { invoke } from "@tauri-apps/api/core";
+
+import { FM_STATIONS } from "./fm-stations";
 
 @Component({
   selector: "app-root",
-  imports: [FormsModule, DecimalPipe],
+  imports: [],
   templateUrl: "./app.component.html",
   styleUrl: "./app.component.css",
 })
 export class AppComponent {
-  frequencyKhz = 101500;
-  status = "Enter an FM frequency in kHz and press Listen.";
+  readonly stations = FM_STATIONS;
+
+  frequencyKhz = 101_500;
+  status = "Ready.";
   isPlaying = false;
   error = "";
+
+  get statusLine(): string {
+    return this.error || this.status;
+  }
+
+  formatMhz(khz: number): string {
+    return (khz / 1000).toFixed(1);
+  }
+
+  selectStation(khz: number): void {
+    if (this.isPlaying) {
+      return;
+    }
+    this.frequencyKhz = khz;
+  }
 
   async listen(): Promise<void> {
     this.error = "";
     const frequency = Math.round(this.frequencyKhz);
 
     if (!Number.isFinite(frequency) || frequency <= 0) {
-      this.error = "Enter a valid frequency in kHz.";
+      this.error = "Invalid frequency.";
       return;
     }
 
     try {
-      this.status = "Tuning RTL-SDR...";
+      this.status = "Tuning...";
       const message = await invoke<string>("start_fm", {
         frequencyKhz: frequency,
       });

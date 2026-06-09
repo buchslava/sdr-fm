@@ -1,36 +1,33 @@
-<main class="container">
-  <header class="header">
-    <h1>SDR FM</h1>
-    <p class="subtitle">RTL-SDR wideband FM receiver</p>
-  </header>
-
-  <section class="tuner">
-    <label class="field-label" for="frequency-input">Frequency (kHz)</label>
-    <div class="frequency-row">
-      <input
-        id="frequency-input"
-        type="number"
-        min="64000"
-        max="1080000"
-        step="50"
-        [(ngModel)]="frequencyKhz"
-        [disabled]="isPlaying"
-        placeholder="101500"
-      />
-      <span class="mhz">{{ frequencyKhz / 1000 | number: "1.3-3" }} MHz</span>
+<main class="winamp-panel">
+  <div class="station-list" [class.frozen]="isPlaying">
+    <div class="station-list-header">
+      <span class="col-freq">Freq</span>
+      <span class="col-name">Name</span>
     </div>
-    <p class="hint">FM broadcast band: 64,000 – 1,080,000 kHz (64 – 108 MHz)</p>
-  </section>
-
-  <div class="actions">
-    <button type="button" class="primary" (click)="listen()" [disabled]="isPlaying">
-      Listen
-    </button>
-    <button type="button" (click)="stop()" [disabled]="!isPlaying">Stop</button>
+    <div class="station-list-body">
+      @for (station of stations; track station.frequencyKhz) {
+        <button
+          type="button"
+          class="station-row"
+          [class.selected]="frequencyKhz === station.frequencyKhz"
+          [disabled]="isPlaying"
+          (click)="selectStation(station.frequencyKhz)"
+        >
+          <span class="col-freq">{{ formatMhz(station.frequencyKhz) }}</span>
+          <span class="col-name"></span>
+        </button>
+      }
+    </div>
   </div>
 
-  <p class="status" [class.playing]="isPlaying">{{ status }}</p>
-  @if (error) {
-    <p class="error">{{ error }}</p>
-  }
+  <div class="transport">
+    <button type="button" class="transport-btn" (click)="listen()" [disabled]="isPlaying">
+      Start
+    </button>
+    <button type="button" class="transport-btn" (click)="stop()" [disabled]="!isPlaying">
+      Stop
+    </button>
+  </div>
+
+  <p class="status-bar" [class.error]="!!error">{{ statusLine }}</p>
 </main>
