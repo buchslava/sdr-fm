@@ -1,0 +1,145 @@
+:host {
+  display: block;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #1a2744 0%, #0b1020 55%, #070a12 100%);
+  color: #e8edf7;
+  font-family: "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+}
+
+.container {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 2rem;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  margin: 0.4rem 0 0;
+  color: #9fb0cc;
+  font-size: 0.95rem;
+}
+
+.tuner {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  color: #b8c5da;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.frequency-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+input {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 0.75rem 0.9rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #f4f7ff;
+  background: rgba(7, 12, 24, 0.85);
+  outline: none;
+}
+
+input:focus {
+  border-color: #4f8cff;
+  box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.2);
+}
+
+input:disabled {
+  opacity: 0.6;
+}
+
+.mhz {
+  min-width: 6.5rem;
+  font-size: 0.95rem;
+  color: #7dd3fc;
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  color: #7f8ea8;
+  line-height: 1.4;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+button {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.8rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e8edf7;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border-color: transparent;
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4f8cff, #3b82f6);
+}
+
+.status {
+  margin: 1.25rem 0 0;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #9fb0cc;
+}
+
+.status.playing {
+  color: #86efac;
+}
+
+.error {
+  margin: 0.75rem 0 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #fca5a5;
+}
