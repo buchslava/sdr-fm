@@ -137,7 +137,7 @@ impl Supervisor {
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
                 pending.disconnect();
                 Err(
-                    "DSP pipeline did not start in time. The Pi may be overloaded — try a lower sample rate: export SDR_FM_SAMPLE_RATE=768000".into(),
+                    "DSP pipeline did not start in time. The Pi may be overloaded — try a lower sample rate: export SDR_FM_SAMPLE_RATE=256000".into(),
                 )
             }
             Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {

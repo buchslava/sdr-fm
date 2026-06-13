@@ -246,29 +246,34 @@ If Start shows an error, read the status bar — audio/SDR failures are reported
 
 - First Rust build on a Pi can take a long time (30+ minutes).
 - FM demod is CPU-heavy; Pi 4/5 is recommended.
-- On Linux ARM64 the default IQ sample rate is **768 kHz** to reduce CPU load. Override with `SDR_FM_SAMPLE_RATE` (768000–3200000).
+- Default IQ sample rate is **1.024 MHz** on all platforms (required RTL-SDR band: not 768 kHz). For lower CPU on Pi try `export SDR_FM_SAMPLE_RATE=256000`.
 - The macOS-only spellcheck workaround in the Rust backend is skipped automatically on Linux.
 
 ## Performance tuning
 
 ### Sample rate
 
-The RTL-SDR IQ sample rate affects CPU use and tuning latency. Defaults:
+The RTL-SDR IQ sample rate affects CPU use and tuning latency. The RTL2832 hardware accepts:
 
-| Platform | Default |
-|----------|---------|
-| macOS / Windows / x86 Linux | 1 024 000 Hz |
-| Linux ARM64 (Raspberry Pi) | 768 000 Hz |
+| Band | Valid range |
+|------|-------------|
+| Low | 225 001 – 300 000 Hz |
+| High | 900 001 – 3 200 000 Hz |
 
-Override for any platform:
+Rates between **300 kHz and 900 kHz** (e.g. 768 000) are **rejected** by the driver.
+
+Default on all platforms: **1 024 000 Hz**.
+
+Override examples:
 
 ```bash
-export SDR_FM_SAMPLE_RATE=768000   # lower CPU; min supported
-export SDR_FM_SAMPLE_RATE=1024000  # default on desktop
+export SDR_FM_SAMPLE_RATE=256000    # lower CPU on Pi (valid low band)
+export SDR_FM_SAMPLE_RATE=1024000   # default
+export SDR_FM_SAMPLE_RATE=2048000   # wider bandwidth, more CPU
 npm run tauri dev
 ```
 
-Valid range: **768 000 – 3 200 000** Hz. Values outside that range are ignored.
+Invalid values snap to the nearest supported rate (logged on stderr).
 
 ### Profiling (on target hardware)
 

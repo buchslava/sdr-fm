@@ -22,25 +22,59 @@ pub const RTL_SDR_OPEN_ARGS: &[&str] = &[
 ];
 pub const DEFAULT_SAMPLE_RATE: u32 = 1_024_000;
 
-const MIN_SAMPLE_RATE: u32 = 768_000;
-const MAX_SAMPLE_RATE: u32 = 3_200_000;
+/// RTL2832 valid bands: 225_001–300_000 Hz and 900_001–3_200_000 Hz.
+/// Rates in (300_000, 900_000] are rejected by librtlsdr (e.g. 768_000, 900_000).
+const RTL_SDR_MIN_SAMPLE_RATE: u32 = 225_001;
+const RTL_SDR_MAX_SAMPLE_RATE: u32 = 3_200_000;
+
+/// Common RTL-SDR rates that work with the WBFM decimation path (~256 kHz IF).
+const RTL_SDR_PREFERRED_RATES: &[u32] = &[
+    256_000,
+    1_024_000,
+    1_536_000,
+    1_792_000,
+    1_920_000,
+    2_048_000,
+    2_160_000,
+    2_560_000,
+];
 
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = 768_000;
-
-#[cfg(all(target_os = "linux", not(target_arch = "aarch64")))]
 const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = DEFAULT_SAMPLE_RATE;
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
 const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = DEFAULT_SAMPLE_RATE;
+
+/// True if `rate` is accepted by the RTL2832 resampler (librtlsdr rules).
+pub fn is_rtlsdr_valid_sample_rate(rate: u32) -> bool {
+    if rate < RTL_SDR_MIN_SAMPLE_RATE || rate > RTL_SDR_MAX_SAMPLE_RATE {
+        return false;
+    }
+    !(rate > 300_000 && rate <= 900_000)
+}
+
+fn nearest_preferred_rate(requested: u32) -> u32 {
+    RTL_SDR_PREFERRED_RATES
+        .iter()
+        .min_by_key(|&&rate| rate.abs_diff(requested))
+        .copied()
+        .unwrap_or(DEFAULT_SAMPLE_RATE)
+}
 
 /// Effective IQ sample rate: `SDR_FM_SAMPLE_RATE` env override, else platform default.
+/// Invalid RTL-SDR rates (e.g. 768_000) snap to the nearest supported rate.
 pub fn effective_sample_rate() -> u32 {
     if let Ok(raw) = std::env::var("SDR_FM_SAMPLE_RATE") {
-        if let Ok(rate) = raw.parse::<u32>() {
-            if (MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&rate) {
-                return rate;
+        if let Ok(requested) = raw.parse::<u32>() {
+            if is_rtlsdr_valid_sample_rate(requested) {
+                return requested;
             }
+            let snapped = nearest_preferred_rate(requested);
+            eprintln!(
+                "SDR_FM_SAMPLE_RATE={requested} is invalid for RTL-SDR; using {snapped} Hz \
+                 (valid bands: 225001–300000 and 900001–3200000)"
+            );
+            return snapped;
         }
     }
     PLATFORM_DEFAULT_SAMPLE_RATE
@@ -109,8 +143,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn platform_default_is_in_valid_range() {
-        let rate = effective_sample_rate();
-        assert!((MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&rate));
+    fn platform_default_is_valid_for_rtlsdr() {
+        assert!(is_rtlsdr_valid_sample_rate(PLATFORM_DEFAULT_SAMPLE_RATE));
+    }
+
+    #[test]
+    fn rejects_rtlsdr_dead_band() {
+        assert!(!is_rtlsdr_valid_sample_rate(768_000));
+        assert!(!is_rtlsdr_valid_sample_rate(900_000));
+        assert!(!is_rtlsdr_valid_sample_rate(500_000));
+    }
+
+    #[test]
+    fn accepts_common_rates() {
+        assert!(is_rtlsdr_valid_sample_rate(256_000));
+        assert!(is_rtlsdr_valid_sample_rate(1_024_000));
+        assert!(is_rtlsdr_valid_sample_rate(2_048_000));
+    }
+
+    #[test]
+    fn nearest_preferred_from_dead_band() {
+        assert_eq!(nearest_preferred_rate(768_000), 1_024_000);
+        assert_eq!(nearest_preferred_rate(900_000), 1_024_000);
     }
 }
