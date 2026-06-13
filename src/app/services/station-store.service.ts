@@ -92,7 +92,7 @@ export class StationStoreService {
     }
 
     const preferred =
-      stations.find((station) => station.frequencyKhz === 101_500) ??
+      stations.find((station) => station.frequencyKhz === 102_000) ??
       stations[0];
     this.selectedId.set(preferred.id);
   }

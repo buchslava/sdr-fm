@@ -29,23 +29,98 @@ fn default_station(id: &str, name: &str, frequency_khz: u32) -> Station {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DefaultCity {
+    Kyiv,
+    Lviv,
+    Kharkiv,
+    Odesa,
+}
+
+/// City for bundled presets. Override with `SDR_FM_CITY` (`kyiv`, `lviv`, `kharkiv`, `odesa`).
+fn parse_default_city(raw: &str) -> DefaultCity {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "kyiv" | "kiev" => DefaultCity::Kyiv,
+        "lviv" | "lvov" | "lwow" => DefaultCity::Lviv,
+        "kharkiv" | "kharkov" => DefaultCity::Kharkiv,
+        "odesa" | "odessa" => DefaultCity::Odesa,
+        _ => DefaultCity::Kharkiv,
+    }
+}
+
+fn default_city() -> DefaultCity {
+    std::env::var("SDR_FM_CITY")
+        .map(|value| parse_default_city(&value))
+        .unwrap_or(DefaultCity::Kharkiv)
+}
+
+fn default_stations_for_city(city: DefaultCity) -> Vec<Station> {
+    // FM networks use different local frequencies per city (radiomap.eu / official station sites).
+    match city {
+        DefaultCity::Kyiv => vec![
+            default_station("default-95200", "Мелодія FM", 95_200),
+            default_station("default-96000", "Радіо NV", 96_000),
+            default_station("default-96400", "Хіт FM", 96_400),
+            default_station("default-98500", "Радіо Байрактар", 98_500),
+            default_station("default-100000", "Країна FM", 100_000),
+            default_station("default-101100", "Радіо П'ятниця", 101_100),
+            default_station("default-101900", "Шлягер FM", 101_900),
+            default_station("default-103100", "Люкс FM", 103_100),
+            default_station("default-103600", "Радіо Рокс", 103_600),
+            default_station("default-104000", "Power FM", 104_000),
+            default_station("default-106500", "Kiss FM", 106_500),
+            default_station("default-107400", "Авторадіо", 107_400),
+            default_station("default-107900", "Наше радіо", 107_900),
+        ],
+        DefaultCity::Lviv => vec![
+            default_station("default-88600", "Радіо NV", 88_600),
+            default_station("default-89100", "Радіо Рокс", 89_100),
+            default_station("default-90400", "Шлягер FM", 90_400),
+            default_station("default-91100", "Kiss FM", 91_100),
+            default_station("default-91500", "Мелодія FM", 91_500),
+            default_station("default-91900", "Радіо П'ятниця", 91_900),
+            default_station("default-93300", "Радіо Релакс", 93_300),
+            default_station("default-101300", "Країна FM", 101_300),
+            default_station("default-101700", "Хіт FM", 101_700),
+            default_station("default-104700", "Люкс FM", 104_700),
+            default_station("default-106000", "Наше радіо", 106_000),
+            default_station("default-107200", "Радіо Байрактар", 107_200),
+        ],
+        DefaultCity::Kharkiv => vec![
+            default_station("default-88000", "Радіо Байрактар", 88_000),
+            default_station("default-89300", "Радіо Рокс", 89_300),
+            default_station("default-90000", "Радіо Релакс", 90_000),
+            default_station("default-90400", "Авторадіо", 90_400),
+            default_station("default-102000", "Хіт FM", 102_000),
+            default_station("default-102400", "Kiss FM", 102_400),
+            default_station("default-103000", "Радіо П'ятниця", 103_000),
+            default_station("default-103500", "Шлягер FM", 103_500),
+            default_station("default-104500", "Наше радіо", 104_500),
+            default_station("default-105200", "Люкс FM", 105_200),
+            default_station("default-105700", "Power FM", 105_700),
+            default_station("default-107000", "Радіо NV", 107_000),
+            default_station("default-107400", "Країна FM", 107_400),
+            default_station("default-107900", "Мелодія FM", 107_900),
+        ],
+        DefaultCity::Odesa => vec![
+            default_station("default-87900", "Радіо NV", 87_900),
+            default_station("default-89000", "Мелодія FM", 89_000),
+            default_station("default-90200", "Радіо Рокс", 90_200),
+            default_station("default-91000", "Країна FM", 91_000),
+            default_station("default-91800", "Шлягер FM", 91_800),
+            default_station("default-101000", "Хіт FM", 101_000),
+            default_station("default-101400", "Радіо П'ятниця", 101_400),
+            default_station("default-101800", "Kiss FM", 101_800),
+            default_station("default-102200", "Авторадіо", 102_200),
+            default_station("default-104300", "Люкс FM", 104_300),
+            default_station("default-104900", "Радіо Байрактар", 104_900),
+            default_station("default-107900", "Наше радіо", 107_900),
+        ],
+    }
+}
+
 fn default_stations() -> Vec<Station> {
-    vec![
-        default_station("default-88000", "BBC Radio 2", 88_000),
-        default_station("default-89100", "NPR / public radio", 89_100),
-        default_station("default-90000", "Classic FM", 90_000),
-        default_station("default-91500", "KJZZ / classical", 91_500),
-        default_station("default-93900", "WNYC", 93_900),
-        default_station("default-95500", "KLOS", 95_500),
-        default_station("default-97100", "KROQ", 97_100),
-        default_station("default-98500", "WBZ-FM", 98_500),
-        default_station("default-100300", "WHTZ (Z100)", 100_300),
-        default_station("default-101500", "WXXL", 101_500),
-        default_station("default-102700", "WNEW-FM", 102_700),
-        default_station("default-104300", "WAXQ", 104_300),
-        default_station("default-106700", "WLTW (Lite FM)", 106_700),
-        default_station("default-107900", "Band edge", 107_900),
-    ]
+    default_stations_for_city(default_city())
 }
 
 fn sort_stations(stations: &mut [Station]) {
@@ -149,6 +224,30 @@ mod tests {
     #[test]
     fn default_stations_are_valid() {
         validate_stations(&default_stations()).unwrap();
+    }
+
+    #[test]
+    fn all_city_presets_are_valid() {
+        for city in [
+            DefaultCity::Kyiv,
+            DefaultCity::Lviv,
+            DefaultCity::Kharkiv,
+            DefaultCity::Odesa,
+        ] {
+            validate_stations(&default_stations_for_city(city))
+                .unwrap_or_else(|err| panic!("{city:?}: {err}"));
+        }
+    }
+
+    #[test]
+    fn parses_default_city_aliases() {
+        assert_eq!(parse_default_city("kyiv"), DefaultCity::Kyiv);
+        assert_eq!(parse_default_city("Kiev"), DefaultCity::Kyiv);
+        assert_eq!(parse_default_city("lviv"), DefaultCity::Lviv);
+        assert_eq!(parse_default_city("lvov"), DefaultCity::Lviv);
+        assert_eq!(parse_default_city("kharkiv"), DefaultCity::Kharkiv);
+        assert_eq!(parse_default_city("odessa"), DefaultCity::Odesa);
+        assert_eq!(parse_default_city("unknown"), DefaultCity::Kharkiv);
     }
 
     #[test]

@@ -100,7 +100,16 @@ While a station is playing, the list and preset editing are frozen.
 - **Name** is optional.
 - Changes are saved immediately to disk.
 
-Default presets are used when no config file exists or the file is empty. After the first edit, stations are stored in:
+Default presets are used when no config file exists or the file is empty. Preset **frequencies depend on your city** — national FM networks use different local allocations (e.g. Хіт FM is 102.0 MHz in Kharkiv but 96.4 MHz in Kyiv). Defaults target **Kharkiv**; override before first launch if needed:
+
+```bash
+export SDR_FM_CITY=kharkiv   # default
+export SDR_FM_CITY=kyiv
+export SDR_FM_CITY=lviv
+export SDR_FM_CITY=odesa
+```
+
+If you already have `~/.sdr-fm/stations.json`, delete or rename it after changing `SDR_FM_CITY` so defaults reload. After the first edit, stations are stored in:
 
 ```
 ~/.sdr-fm/stations.json
