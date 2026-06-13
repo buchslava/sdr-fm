@@ -179,9 +179,18 @@ sudo apt install \
   libssl-dev \
   libayatana-appindicator3-dev \
   librsvg2-dev \
+  libclang-dev \
+  clang \
+  pkg-config \
   libsoapysdr-dev \
   soapysdr-module-rtlsdr \
   librtlsdr-dev
+```
+
+`libclang-dev` and `clang` are required because SoapySDR’s Rust bindings (`soapysdr-sys`) use **bindgen** at compile time. Without them you get:
+
+```text
+Unable to find libclang ... set the LIBCLANG_PATH environment variable
 ```
 
 **2. Toolchain on the Pi:**
