@@ -206,7 +206,52 @@ Output: `src-tauri/target/release/bundle/deb/` or `appimage/` (depending on Taur
 
 - First Rust build on a Pi can take a long time (30+ minutes).
 - FM demod is CPU-heavy; Pi 4/5 is recommended.
+- On Linux ARM64 the default IQ sample rate is **900 kHz** (vs 1.024 MHz on other platforms) to reduce CPU load. Override with `SDR_FM_SAMPLE_RATE` (768000–3200000).
 - The macOS-only spellcheck workaround in the Rust backend is skipped automatically on Linux.
+
+## Performance tuning
+
+### Sample rate
+
+The RTL-SDR IQ sample rate affects CPU use and tuning latency. Defaults:
+
+| Platform | Default |
+|----------|---------|
+| macOS / Windows / x86 Linux | 1 024 000 Hz |
+| Linux ARM64 (Raspberry Pi) | 900 000 Hz |
+
+Override for any platform:
+
+```bash
+export SDR_FM_SAMPLE_RATE=768000   # lower CPU; min supported
+export SDR_FM_SAMPLE_RATE=1024000  # default on desktop
+npm run tauri dev
+```
+
+Valid range: **768 000 – 3 200 000** Hz. Values outside that range are ignored.
+
+### Profiling (on target hardware)
+
+Profile the Rust DSP hot path on the machine you care about (especially a Pi), not only on a dev Mac:
+
+```bash
+# Install flamegraph tooling once
+cargo install flamegraph
+
+# From src-tauri/ — profile while the app is receiving
+cd src-tauri
+cargo flamegraph --bin sdr_fm
+```
+
+Run the packaged app, start playback, tune a station, then stop. Open `flamegraph.svg` to see where CPU time goes (WBFM demod, resampling, SoapySDR read, etc.).
+
+For a release build with symbols:
+
+```bash
+CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph --release --bin sdr_fm
+```
+
+Station changes while playing use a live retune command instead of reopening the device, so switching presets should stay fast after the first Start.
 
 ## Tech stack
 
@@ -220,4 +265,4 @@ Output: `src-tauri/target/release/bundle/deb/` or `appimage/` (depending on Taur
 
 ## License
 
-See repository license file if present.
+[LICENSE](LICENSE) — MIT License.

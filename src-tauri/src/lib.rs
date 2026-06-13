@@ -1,5 +1,7 @@
 mod config;
 mod dsp;
+#[cfg(target_os = "macos")]
+mod macos_menu;
 mod macos_spellcheck;
 mod sdr;
 
@@ -40,7 +42,7 @@ pub fn run() {
     init_logging();
     macos_spellcheck::disable_webview_spellcheck();
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(SdrPlayer::default())
@@ -49,7 +51,12 @@ pub fn run() {
             stop_fm,
             get_stations,
             set_stations
-        ])
+        ]);
+
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(|app| macos_menu::default_menu(app));
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

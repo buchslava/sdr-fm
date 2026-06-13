@@ -23,6 +23,7 @@ pub(super) fn run(
     initial_freq: u64,
     cmd_rx: Receiver<DspCommand>,
     quit: Arc<AtomicBool>,
+    quit_rx: Receiver<()>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut fg = Flowgraph::new();
 
@@ -96,10 +97,10 @@ pub(super) fn run(
     let pump_thread = std::thread::spawn(move || {
         use futuresdr::futures::executor::block_on;
         loop {
-            if cmd_quit.load(Ordering::Relaxed) {
+            if cmd_quit.load(Ordering::Acquire) {
                 break;
             }
-            match cmd_rx.recv_timeout(Duration::from_millis(50)) {
+            match cmd_rx.recv_timeout(Duration::from_millis(200)) {
                 Ok(cmd) => block_on(apply_command(&pump_handle, src_id, cmd)),
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
@@ -107,9 +108,7 @@ pub(super) fn run(
         }
     });
 
-    while !quit.load(Ordering::Relaxed) {
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    let _ = quit_rx.recv();
 
     let _ = pump_thread.join();
     let _ = futuresdr::futures::executor::block_on(running.stop_and_wait());

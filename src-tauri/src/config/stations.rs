@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -98,6 +99,7 @@ pub fn validate_stations(stations: &[Station]) -> Result<(), String> {
         return Err("At least one station is required.".to_string());
     }
 
+    let mut seen = HashSet::with_capacity(stations.len());
     for station in stations {
         if station.id.trim().is_empty() {
             return Err("Station id cannot be empty.".to_string());
@@ -109,16 +111,12 @@ pub fn validate_stations(stations: &[Station]) -> Result<(), String> {
                 FM_MIN_KHZ, FM_MAX_KHZ
             ));
         }
-    }
 
-    for (i, a) in stations.iter().enumerate() {
-        for b in stations.iter().skip(i + 1) {
-            if a.frequency_khz == b.frequency_khz {
-                return Err(format!(
-                    "Duplicate frequency: {:.1} MHz.",
-                    a.frequency_khz as f64 / 1000.0
-                ));
-            }
+        if !seen.insert(station.frequency_khz) {
+            return Err(format!(
+                "Duplicate frequency: {:.1} MHz.",
+                station.frequency_khz as f64 / 1000.0
+            ));
         }
     }
 

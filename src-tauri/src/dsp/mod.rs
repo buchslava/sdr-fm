@@ -17,6 +17,27 @@ pub const RTL_SDR_OPEN_ARGS: &[&str] = &[
 ];
 pub const DEFAULT_SAMPLE_RATE: u32 = 1_024_000;
 
+const MIN_SAMPLE_RATE: u32 = 768_000;
+const MAX_SAMPLE_RATE: u32 = 3_200_000;
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = 900_000;
+
+#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
+const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = DEFAULT_SAMPLE_RATE;
+
+/// Effective IQ sample rate: `SDR_FM_SAMPLE_RATE` env override, else platform default.
+pub fn effective_sample_rate() -> u32 {
+    if let Ok(raw) = std::env::var("SDR_FM_SAMPLE_RATE") {
+        if let Ok(rate) = raw.parse::<u32>() {
+            if (MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&rate) {
+                return rate;
+            }
+        }
+    }
+    PLATFORM_DEFAULT_SAMPLE_RATE
+}
+
 pub fn open_device() -> Result<Device<GenericDevice>, String> {
     let mut last_err = String::new();
 
@@ -47,8 +68,20 @@ pub fn spawn_dsp_thread(
     initial_freq: u64,
     cmd_rx: Receiver<DspCommand>,
     quit: Arc<AtomicBool>,
+    quit_rx: Receiver<()>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
-        let _ = flowgraph::run(dev, sample_rate, initial_freq, cmd_rx, quit);
+        let _ = flowgraph::run(dev, sample_rate, initial_freq, cmd_rx, quit, quit_rx);
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn platform_default_is_in_valid_range() {
+        let rate = effective_sample_rate();
+        assert!((MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&rate));
+    }
 }
