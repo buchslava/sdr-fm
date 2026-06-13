@@ -182,6 +182,7 @@ sudo apt install \
   libclang-dev \
   clang \
   pkg-config \
+  libasound2-dev \
   libsoapysdr-dev \
   soapysdr-module-rtlsdr \
   librtlsdr-dev
@@ -191,6 +192,12 @@ sudo apt install \
 
 ```text
 Unable to find libclang ... set the LIBCLANG_PATH environment variable
+```
+
+`libasound2-dev` provides ALSA headers/pkg-config for audio output (`alsa-sys` via cpal/rodio). Without it you get:
+
+```text
+Package 'alsa', required by 'virtual:world', not found
 ```
 
 **2. Toolchain on the Pi:**
