@@ -1,0 +1,52 @@
+<div class="modal-backdrop" (click)="cancel()">
+  <div
+    class="modal-panel"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-label]="title()"
+    (click)="$event.stopPropagation()"
+  >
+    <p class="modal-title">{{ title() }}</p>
+
+    <label class="field-label" for="station-frequency">Frequency (MHz)</label>
+    <input
+      #frequencyInput
+      id="station-frequency"
+      type="number"
+      min="64"
+      max="1080"
+      step="0.1"
+      lang="zxx"
+      spellcheck="false"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      [ngModel]="frequencyMhz()"
+      (ngModelChange)="onFrequencyInput($event)"
+    />
+    @if (fieldErrors().frequency) {
+      <p class="field-error">{{ fieldErrors().frequency }}</p>
+    }
+
+    <label class="field-label" for="station-name">Name</label>
+    <input
+      id="station-name"
+      type="text"
+      lang="zxx"
+      spellcheck="false"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      [ngModel]="name()"
+      (ngModelChange)="onNameInput($event)"
+    />
+    @if (fieldErrors().name) {
+      <p class="field-error">{{ fieldErrors().name }}</p>
+    }
+
+    <div class="modal-actions">
+      <button type="button" class="modal-btn" (click)="submit()">OK</button>
+      <button type="button" class="modal-btn" (click)="cancel()">Cancel</button>
+    </div>
+  </div>
+</div>

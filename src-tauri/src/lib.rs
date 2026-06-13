@@ -1,6 +1,9 @@
+mod config;
 mod dsp;
+mod macos_spellcheck;
 mod sdr;
 
+use config::{Station, load_stations, save_stations};
 use sdr::SdrPlayer;
 
 fn init_logging() {
@@ -22,14 +25,31 @@ fn stop_fm(player: tauri::State<'_, SdrPlayer>) -> Result<(), String> {
     player.stop()
 }
 
+#[tauri::command]
+fn get_stations() -> Vec<Station> {
+    load_stations()
+}
+
+#[tauri::command]
+fn set_stations(stations: Vec<Station>) -> Result<(), String> {
+    save_stations(&stations)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_logging();
+    macos_spellcheck::disable_webview_spellcheck();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(SdrPlayer::default())
-        .invoke_handler(tauri::generate_handler![start_fm, stop_fm])
+        .invoke_handler(tauri::generate_handler![
+            start_fm,
+            stop_fm,
+            get_stations,
+            set_stations
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

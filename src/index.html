@@ -1,12 +1,38 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" spellcheck="false">
   <head>
     <meta charset="utf-8" />
     <title>SDR FM</title>
     <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      document.addEventListener(
+        "focusin",
+        (event) => {
+          const target = event.target;
+          if (
+            !(target instanceof HTMLInputElement) &&
+            !(target instanceof HTMLTextAreaElement)
+          ) {
+            return;
+          }
+
+          target.spellcheck = false;
+          target.autocomplete = "off";
+          target.autocapitalize = "off";
+
+          const length = target.value.length;
+          try {
+            target.setSelectionRange(length, length);
+          } catch {
+            // number inputs may not support selection ranges
+          }
+        },
+        true,
+      );
+    </script>
   </head>
-  <body>
+  <body spellcheck="false">
     <app-root></app-root>
   </body>
 </html>

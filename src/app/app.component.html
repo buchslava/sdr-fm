@@ -1,33 +1,69 @@
 <main class="winamp-panel">
-  <div class="station-list" [class.frozen]="isPlaying">
+  <div class="station-list">
     <div class="station-list-header">
       <span class="col-freq">Freq</span>
       <span class="col-name">Name</span>
+      <span class="header-actions">
+        <button
+          type="button"
+          class="icon-btn"
+          title="Add station"
+          (click)="openAdd()"
+          [disabled]="crudDisabled()"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          class="icon-btn"
+          title="Remove station"
+          (click)="deleteSelected()"
+          [disabled]="crudDisabled() || !store.selectedId()"
+        >
+          ×
+        </button>
+      </span>
     </div>
-    <div class="station-list-body">
-      @for (station of stations; track station.frequencyKhz) {
+    <div class="station-list-body" [class.frozen]="isPlaying()">
+      @for (station of store.stations(); track station.id) {
         <button
           type="button"
           class="station-row"
-          [class.selected]="frequencyKhz === station.frequencyKhz"
-          [disabled]="isPlaying"
-          (click)="selectStation(station.frequencyKhz)"
+          [class.selected]="store.selectedId() === station.id"
+          [disabled]="isPlaying()"
+          (click)="selectStation(station.id)"
+          (dblclick)="openEdit(station)"
         >
           <span class="col-freq">{{ formatMhz(station.frequencyKhz) }}</span>
-          <span class="col-name"></span>
+          <span class="col-name">{{ station.name }}</span>
         </button>
       }
     </div>
   </div>
 
   <div class="transport">
-    <button type="button" class="transport-btn" (click)="listen()" [disabled]="isPlaying">
+    <button
+      type="button"
+      class="transport-btn"
+      (click)="listen()"
+      [disabled]="isPlaying() || !store.selectedId()"
+    >
       Start
     </button>
-    <button type="button" class="transport-btn" (click)="stop()" [disabled]="!isPlaying">
+    <button type="button" class="transport-btn" (click)="stop()" [disabled]="!isPlaying()">
       Stop
     </button>
   </div>
 
-  <p class="status-bar" [class.error]="!!error">{{ statusLine }}</p>
+  <p class="status-bar" [class.error]="!!error()">{{ statusLine() }}</p>
 </main>
+
+@if (modalOpen()) {
+  <app-station-form-modal
+    [mode]="modalMode()"
+    [station]="modalStation()"
+    [stations]="store.stations()"
+    (saved)="onModalSave($event)"
+    (closed)="closeModal()"
+  />
+}

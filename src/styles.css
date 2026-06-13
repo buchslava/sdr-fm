@@ -1,9 +1,69 @@
+@font-face {
+  font-family: "Aller";
+  src: url("assets/fonts/aller/Aller_Std_Lt.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aller";
+  src: url("assets/fonts/aller/Aller_Std_LtIt.ttf") format("truetype");
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aller";
+  src: url("assets/fonts/aller/Aller_Std_Rg.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aller";
+  src: url("assets/fonts/aller/Aller_Std_It.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aller";
+  src: url("assets/fonts/aller/Aller_Std_Bd.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Aller";
+  src: url("assets/fonts/aller/Aller_Std_BdIt.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
 html,
 body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  font-family: Tahoma, Arial, sans-serif;
+  font-family: "Aller", Tahoma, Arial, sans-serif;
   font-size: 11px;
   background: #c0c0c0;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+input,
+textarea {
+  spellcheck: false;
 }
