@@ -1,5 +1,5 @@
 use cpal::traits::{DeviceTrait, HostTrait};
-use cpal::{Device, SampleRate, SupportedStreamConfig, SupportedStreamConfigRange};
+use cpal::{Device, SupportedStreamConfig, SupportedStreamConfigRange};
 
 #[derive(Debug, Clone)]
 pub struct OutputSetup {
@@ -104,15 +104,14 @@ fn pick_stream_format(
     }
 
     Ok((
-        default.sample_rate().0,
+        default.sample_rate(),
         if default.channels() >= 2 { 2 } else { 1 },
     ))
 }
 
 fn channels_for_rate(configs: &[SupportedStreamConfigRange], rate: u32) -> Option<u16> {
-    let sample_rate = SampleRate(rate);
     for config in configs {
-        if sample_rate < config.min_sample_rate() || sample_rate > config.max_sample_rate() {
+        if rate < config.min_sample_rate() || rate > config.max_sample_rate() {
             continue;
         }
         if config.channels() >= 2 {

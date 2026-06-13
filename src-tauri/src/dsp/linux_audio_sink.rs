@@ -1,6 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, Stream, StreamConfig};
 use futuresdr::prelude::*;
+use futuresdr::runtime::dev::prelude::*;
 
 use super::linux_audio::OutputSetup;
 
