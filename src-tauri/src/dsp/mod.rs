@@ -1,10 +1,5 @@
-mod audio;
 mod command;
 mod flowgraph;
-#[cfg(target_os = "linux")]
-mod linux_audio;
-#[cfg(target_os = "linux")]
-mod linux_audio_sink;
 mod silence;
 
 use std::sync::Arc;
@@ -27,7 +22,6 @@ pub const DEFAULT_SAMPLE_RATE: u32 = 1_024_000;
 const RTL_SDR_MIN_SAMPLE_RATE: u32 = 225_001;
 const RTL_SDR_MAX_SAMPLE_RATE: u32 = 3_200_000;
 
-/// Common RTL-SDR rates that work with the WBFM decimation path (~256 kHz IF).
 const RTL_SDR_PREFERRED_RATES: &[u32] = &[
     256_000,
     1_024_000,
@@ -39,10 +33,6 @@ const RTL_SDR_PREFERRED_RATES: &[u32] = &[
     2_560_000,
 ];
 
-#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = DEFAULT_SAMPLE_RATE;
-
-#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
 const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = DEFAULT_SAMPLE_RATE;
 
 /// True if `rate` is accepted by the RTL2832 resampler (librtlsdr rules).
@@ -80,6 +70,17 @@ pub fn effective_sample_rate() -> u32 {
     PLATFORM_DEFAULT_SAMPLE_RATE
 }
 
+/// Optional ALSA device override for cpal/rodio (Linux only).
+#[cfg(target_os = "linux")]
+pub fn configure_linux_audio_env() {
+    if let Ok(device) = std::env::var("SDR_FM_ALSA_DEVICE") {
+        unsafe { std::env::set_var("ALSA_PCM_DEVICE", device); }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn configure_linux_audio_env() {}
+
 pub fn open_device() -> Result<Device<GenericDevice>, String> {
     let mut last_err = String::new();
 
@@ -113,6 +114,7 @@ pub fn spawn_dsp_thread(
     quit_rx: Receiver<()>,
     ready_tx: Sender<Result<String, String>>,
 ) -> thread::JoinHandle<()> {
+    configure_linux_audio_env();
     thread::spawn(move || {
         if let Err(e) = flowgraph::run(
             dev,
@@ -128,14 +130,12 @@ pub fn spawn_dsp_thread(
     })
 }
 
-#[cfg(target_os = "linux")]
 pub fn list_output_devices() -> Result<Vec<String>, String> {
-    linux_audio::list_linux_output_devices()
-}
-
-#[cfg(not(target_os = "linux"))]
-pub fn list_output_devices() -> Result<Vec<String>, String> {
-    Ok(vec!["Use system default audio output.".into()])
+    Ok(vec![
+        "Audio uses the system default output (cpal/ALSA).".into(),
+        "List cards: aplay -l".into(),
+        "Override: export SDR_FM_ALSA_DEVICE=plughw:CARD,DEV".into(),
+    ])
 }
 
 #[cfg(test)]

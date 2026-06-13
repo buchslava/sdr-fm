@@ -122,13 +122,9 @@ impl Supervisor {
         };
 
         match ready_rx.recv_timeout(DSP_START_TIMEOUT) {
-            Ok(Ok(device_label)) => {
+            Ok(Ok(detail)) => {
                 self.thread = Some(pending);
-                Ok(if device_label.is_empty() {
-                    message
-                } else {
-                    format!("{message} → {device_label}")
-                })
+                Ok(format!("{message} ({detail})"))
             }
             Ok(Err(err)) => {
                 pending.disconnect();

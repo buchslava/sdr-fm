@@ -220,24 +220,18 @@ Output: `src-tauri/target/release/bundle/deb/` or `appimage/` (depending on Taur
 
 **5. No audio on Pi (app shows “playing” but silence):**
 
-On Linux the app uses the **same ALSA default** as the rest of the desktop — including **HDMI audio through an external display**. After **Start**, the status bar shows which output was opened, e.g.:
+Audio uses FutureSDR’s stock **`AudioSink` at 48 kHz** (same pipeline as the sdrrat reference project). After **Start**, the status bar shows IQ and audio rates, e.g.:
 
 ```text
-Tuned to 101.500 MHz (WBFM) → Default Audio Device
+Tuned to 101.500 MHz (WBFM) (1024000 Hz IQ → 48000 Hz audio)
 ```
 
-To force a specific ALSA device instead:
+If other apps play sound but SDR FM does not, point ALSA at your output (HDMI display, headphones, etc.):
 
 ```bash
 aplay -l
 export SDR_FM_ALSA_DEVICE=plughw:0,0   # card/device from aplay -l
 ./sdr_fm
-```
-
-List devices the app can see (devtools console on the Pi):
-
-```javascript
-await window.__TAURI_INTERNALS__.invoke('get_audio_devices')
 ```
 
 If Start shows an error, read the status bar — audio/SDR failures are reported there.

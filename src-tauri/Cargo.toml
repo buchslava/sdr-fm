@@ -30,9 +30,6 @@ crossbeam-channel = "0.5"
 num-complex = "0.4"
 libc = "0.2"
 
-[target.'cfg(target_os = "linux")'.dependencies]
-cpal = { version = "0.17", default-features = false }
-
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = "0.3"
 
