@@ -218,6 +218,26 @@ Output: `src-tauri/target/release/bundle/deb/` or `appimage/` (depending on Taur
 
 **4. RTL-SDR on Pi:** plug in the dongle, verify with `SoapySDRUtil --find`, and ensure your user can access USB (often `sudo usermod -aG plugdev $USER` then re-login).
 
+**5. No audio on Pi (app shows “playing” but silence):**
+
+The app uses the **ALSA default output**. On Raspberry Pi that is often **HDMI**, while headphones/USB speakers use a different card.
+
+List devices:
+
+```bash
+aplay -l
+speaker-test -t wav -c 2   # confirms which output you hear
+```
+
+If sound works only on a non-default card, point the app at it before launch:
+
+```bash
+export SDR_FM_ALSA_DEVICE=plughw:1,0   # card 1 from `aplay -l`
+./sdr_fm   # or your .deb / AppImage launcher from the same shell
+```
+
+If Start now shows an error instead of silence, read the message — startup failures (audio device, sample rate, RTL-SDR) are reported in the status bar.
+
 **Notes:**
 
 - First Rust build on a Pi can take a long time (30+ minutes).

@@ -1,3 +1,4 @@
+mod audio;
 mod command;
 mod flowgraph;
 mod silence;
@@ -6,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::thread;
 
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, Sender};
 use futuresdr::seify::{Device, GenericDevice};
 
 pub use command::DspCommand;
@@ -69,9 +70,21 @@ pub fn spawn_dsp_thread(
     cmd_rx: Receiver<DspCommand>,
     quit: Arc<AtomicBool>,
     quit_rx: Receiver<()>,
+    ready_tx: Sender<Result<(), String>>,
 ) -> thread::JoinHandle<()> {
+    audio::configure_linux_output();
     thread::spawn(move || {
-        let _ = flowgraph::run(dev, sample_rate, initial_freq, cmd_rx, quit, quit_rx);
+        if let Err(e) = flowgraph::run(
+            dev,
+            sample_rate,
+            initial_freq,
+            cmd_rx,
+            quit,
+            quit_rx,
+            ready_tx,
+        ) {
+            eprintln!("SDR FM DSP error: {e}");
+        }
     })
 }
 

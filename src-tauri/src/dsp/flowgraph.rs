@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, Sender};
 use futuresdr::blocks::audio::AudioSink;
 use futuresdr::blocks::seify::Builder as SeifyBuilder;
 use futuresdr::blocks::{Apply, FirBuilder};
@@ -10,11 +10,11 @@ use futuresdr::num_complex::Complex32;
 use futuresdr::prelude::*;
 use futuresdr::seify::{Device, GenericDevice};
 
+use super::audio;
 use super::command::{DspCommand, apply_command};
 use super::silence;
 
 const DEFAULT_GAIN: f64 = 40.0;
-const AUDIO_RATE: u32 = 48_000;
 const WBFM_TARGET_RATE: u32 = 256_000;
 
 pub(super) fn run(
@@ -24,7 +24,35 @@ pub(super) fn run(
     cmd_rx: Receiver<DspCommand>,
     quit: Arc<AtomicBool>,
     quit_rx: Receiver<()>,
+    ready_tx: Sender<Result<(), String>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    match run_pipeline(
+        dev,
+        sample_rate,
+        initial_freq,
+        cmd_rx,
+        quit,
+        quit_rx,
+        &ready_tx,
+    ) {
+        Err(e) => {
+            let _ = ready_tx.send(Err(e.to_string()));
+            Err(e)
+        }
+        Ok(()) => Ok(()),
+    }
+}
+
+fn run_pipeline(
+    dev: Device<GenericDevice>,
+    sample_rate: u32,
+    initial_freq: u64,
+    cmd_rx: Receiver<DspCommand>,
+    quit: Arc<AtomicBool>,
+    quit_rx: Receiver<()>,
+    ready_tx: &Sender<Result<(), String>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let audio_rate = audio::output_sample_rate();
     let mut fg = Flowgraph::new();
 
     let wbfm_decim = ((sample_rate as f64) / (WBFM_TARGET_RATE as f64))
@@ -52,10 +80,10 @@ pub(super) fn run(
     });
 
     let wbfm_resamp =
-        FirBuilder::resampling::<f32, f32>(AUDIO_RATE as usize, wbfm_rate as usize);
+        FirBuilder::resampling::<f32, f32>(audio_rate as usize, wbfm_rate as usize);
 
     let tau_s: f32 = 75e-6;
-    let alpha: f32 = (-1.0 / (AUDIO_RATE as f32 * tau_s)).exp();
+    let alpha: f32 = (-1.0 / (audio_rate as f32 * tau_s)).exp();
     let mut y_prev: f32 = 0.0;
     let deemph = Apply::new(move |x: &f32| -> f32 {
         let y = (1.0 - alpha) * *x + alpha * y_prev;
@@ -64,7 +92,9 @@ pub(super) fn run(
     });
 
     let volume = Apply::new(|s: &f32| -> f32 { *s * 0.3 });
-    let audio_sink = AudioSink::new(AUDIO_RATE, 1)?;
+    let audio_sink = AudioSink::new(audio_rate, 1).map_err(|e| {
+        format!("{} ({e})", audio::audio_sink_error_hint(audio_rate))
+    })?;
 
     let src = fg.add(src);
     let wbfm_decim_block = fg.add(wbfm_decim_block);
@@ -89,7 +119,10 @@ pub(super) fn run(
     let src_id: BlockId = (&src).into();
 
     let rt = Runtime::new();
-    let running = silence::silenced(|| rt.start(fg))?;
+    let running = rt.start(fg)?;
+    ready_tx
+        .send(Ok(()))
+        .map_err(|e| format!("Failed to signal DSP ready: {e}"))?;
     let handle = running.handle();
 
     let cmd_quit = Arc::clone(&quit);

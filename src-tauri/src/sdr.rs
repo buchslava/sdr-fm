@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use crossbeam_channel::{Sender, bounded};
 
@@ -7,6 +8,7 @@ use crate::dsp::{self, DspCommand};
 
 const FM_MIN_KHZ: u32 = 64_000;
 const FM_MAX_KHZ: u32 = 1_080_000;
+const DSP_START_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub struct SdrPlayer {
     inner: Mutex<Supervisor>,
@@ -94,6 +96,7 @@ impl Supervisor {
 
         let (cmd_tx, cmd_rx) = bounded::<DspCommand>(16);
         let (quit_tx, quit_rx) = bounded::<()>(1);
+        let (ready_tx, ready_rx) = bounded::<Result<(), String>>(1);
         let quit = Arc::new(AtomicBool::new(false));
 
         let handle = dsp::spawn_dsp_thread(
@@ -103,24 +106,50 @@ impl Supervisor {
             cmd_rx,
             Arc::clone(&quit),
             quit_rx,
+            ready_tx,
         );
 
-        self.thread = Some(DspThread {
+        let pending = DspThread {
             handle,
             quit,
             cmd_tx,
             quit_tx,
-        });
+        };
 
-        Ok(())
+        match ready_rx.recv_timeout(DSP_START_TIMEOUT) {
+            Ok(Ok(())) => {
+                self.thread = Some(pending);
+                Ok(())
+            }
+            Ok(Err(err)) => {
+                pending.disconnect();
+                Err(err)
+            }
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                pending.disconnect();
+                Err(
+                    "DSP pipeline did not start in time. The Pi may be overloaded — try a lower sample rate: export SDR_FM_SAMPLE_RATE=768000".into(),
+                )
+            }
+            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                pending.disconnect();
+                Err("DSP pipeline exited before startup completed.".into())
+            }
+        }
     }
 
     fn disconnect(&mut self) {
         if let Some(thread) = self.thread.take() {
-            thread.quit.store(true, Ordering::Release);
-            drop(thread.cmd_tx);
-            let _ = thread.quit_tx.send(());
-            let _ = thread.handle.join();
+            thread.disconnect();
         }
+    }
+}
+
+impl DspThread {
+    fn disconnect(self) {
+        self.quit.store(true, Ordering::Release);
+        drop(self.cmd_tx);
+        let _ = self.quit_tx.send(());
+        let _ = self.handle.join();
     }
 }
