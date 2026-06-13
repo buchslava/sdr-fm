@@ -3,19 +3,31 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
-use futuresdr::blocks::audio::AudioSink;
 use futuresdr::blocks::seify::Builder as SeifyBuilder;
 use futuresdr::blocks::{Apply, FirBuilder};
 use futuresdr::num_complex::Complex32;
 use futuresdr::prelude::*;
 use futuresdr::seify::{Device, GenericDevice};
 
-use super::audio;
+#[cfg(not(target_os = "linux"))]
+use futuresdr::blocks::audio::AudioSink;
+
 use super::command::{DspCommand, apply_command};
 use super::silence;
 
+#[cfg(target_os = "linux")]
+use super::linux_audio;
+#[cfg(target_os = "linux")]
+use super::linux_audio_sink::LinuxAudioSink;
+
 const DEFAULT_GAIN: f64 = 40.0;
 const WBFM_TARGET_RATE: u32 = 256_000;
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const OUTPUT_VOLUME: f32 = 0.7;
+
+#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
+const OUTPUT_VOLUME: f32 = 0.3;
 
 pub(super) fn run(
     dev: Device<GenericDevice>,
@@ -24,7 +36,7 @@ pub(super) fn run(
     cmd_rx: Receiver<DspCommand>,
     quit: Arc<AtomicBool>,
     quit_rx: Receiver<()>,
-    ready_tx: Sender<Result<(), String>>,
+    ready_tx: Sender<Result<String, String>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match run_pipeline(
         dev,
@@ -50,9 +62,17 @@ fn run_pipeline(
     cmd_rx: Receiver<DspCommand>,
     quit: Arc<AtomicBool>,
     quit_rx: Receiver<()>,
-    ready_tx: &Sender<Result<(), String>>,
+    ready_tx: &Sender<Result<String, String>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let audio_rate = audio::output_sample_rate();
+    #[cfg(target_os = "linux")]
+    let output = linux_audio::prepare_linux_output()?;
+
+    #[cfg(not(target_os = "linux"))]
+    let audio_rate = super::audio::output_sample_rate();
+
+    #[cfg(target_os = "linux")]
+    let audio_rate = output.sample_rate;
+
     let mut fg = Flowgraph::new();
 
     let wbfm_decim = ((sample_rate as f64) / (WBFM_TARGET_RATE as f64))
@@ -91,10 +111,23 @@ fn run_pipeline(
         y
     });
 
-    let volume = Apply::new(|s: &f32| -> f32 { *s * 0.3 });
-    let audio_sink = AudioSink::new(audio_rate, 1).map_err(|e| {
-        format!("{} ({e})", audio::audio_sink_error_hint(audio_rate))
-    })?;
+    let volume = Apply::new(move |s: &f32| -> f32 { *s * OUTPUT_VOLUME });
+
+    #[cfg(target_os = "linux")]
+    let device_label = output.device_label.clone();
+    #[cfg(target_os = "linux")]
+    let audio_sink = {
+        let sink = LinuxAudioSink::new(output).map_err(|e| e.to_string())?;
+        fg.add(sink)
+    };
+
+    #[cfg(not(target_os = "linux"))]
+    let audio_sink = {
+        let sink = AudioSink::new(audio_rate, 1).map_err(|e| {
+            format!("{} ({e})", super::audio::audio_sink_error_hint(audio_rate))
+        })?;
+        fg.add(sink)
+    };
 
     let src = fg.add(src);
     let wbfm_decim_block = fg.add(wbfm_decim_block);
@@ -102,7 +135,6 @@ fn run_pipeline(
     let wbfm_resamp = fg.add(wbfm_resamp);
     let deemph = fg.add(deemph);
     let volume = fg.add(volume);
-    let audio_sink = fg.add(audio_sink);
 
     fg.stream(&src, |b| b.outputs().get_mut(0).unwrap(), &wbfm_decim_block, |b| b.input())?;
     fg.stream(
@@ -120,9 +152,16 @@ fn run_pipeline(
 
     let rt = Runtime::new();
     let running = rt.start(fg)?;
+
+    #[cfg(target_os = "linux")]
     ready_tx
-        .send(Ok(()))
+        .send(Ok(device_label))
         .map_err(|e| format!("Failed to signal DSP ready: {e}"))?;
+    #[cfg(not(target_os = "linux"))]
+    ready_tx
+        .send(Ok(String::new()))
+        .map_err(|e| format!("Failed to signal DSP ready: {e}"))?;
+
     let handle = running.handle();
 
     let cmd_quit = Arc::clone(&quit);

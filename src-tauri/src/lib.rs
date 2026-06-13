@@ -37,6 +37,11 @@ fn set_stations(stations: Vec<Station>) -> Result<(), String> {
     save_stations(&stations)
 }
 
+#[tauri::command]
+fn get_audio_devices() -> Result<Vec<String>, String> {
+    dsp::list_output_devices()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_logging();
@@ -50,7 +55,8 @@ pub fn run() {
             start_fm,
             stop_fm,
             get_stations,
-            set_stations
+            set_stations,
+            get_audio_devices
         ]);
 
     #[cfg(target_os = "macos")]

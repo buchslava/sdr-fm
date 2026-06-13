@@ -64,7 +64,7 @@ impl SdrPlayer {
         let sample_rate = dsp::effective_sample_rate();
 
         let mut supervisor = self.lock_inner()?;
-        supervisor.spawn_pipeline(dev, sample_rate, frequency_hz)?;
+        let message = supervisor.spawn_pipeline(dev, sample_rate, frequency_hz)?;
 
         Ok(message)
     }
@@ -91,12 +91,17 @@ impl Supervisor {
         dev: futuresdr::seify::Device<futuresdr::seify::GenericDevice>,
         sample_rate: u32,
         frequency_hz: u64,
-    ) -> Result<(), String> {
+    ) -> Result<String, String> {
+        let message = format!(
+            "Tuned to {:.3} MHz (WBFM)",
+            frequency_hz as f64 / 1_000_000.0
+        );
+
         self.disconnect();
 
         let (cmd_tx, cmd_rx) = bounded::<DspCommand>(16);
         let (quit_tx, quit_rx) = bounded::<()>(1);
-        let (ready_tx, ready_rx) = bounded::<Result<(), String>>(1);
+        let (ready_tx, ready_rx) = bounded::<Result<String, String>>(1);
         let quit = Arc::new(AtomicBool::new(false));
 
         let handle = dsp::spawn_dsp_thread(
@@ -117,9 +122,13 @@ impl Supervisor {
         };
 
         match ready_rx.recv_timeout(DSP_START_TIMEOUT) {
-            Ok(Ok(())) => {
+            Ok(Ok(device_label)) => {
                 self.thread = Some(pending);
-                Ok(())
+                Ok(if device_label.is_empty() {
+                    message
+                } else {
+                    format!("{message} → {device_label}")
+                })
             }
             Ok(Err(err)) => {
                 pending.disconnect();

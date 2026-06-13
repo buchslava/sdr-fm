@@ -220,29 +220,33 @@ Output: `src-tauri/target/release/bundle/deb/` or `appimage/` (depending on Taur
 
 **5. No audio on Pi (app shows “playing” but silence):**
 
-The app uses the **ALSA default output**. On Raspberry Pi that is often **HDMI**, while headphones/USB speakers use a different card.
+On Linux the app uses the **same ALSA default** as the rest of the desktop — including **HDMI audio through an external display**. After **Start**, the status bar shows which output was opened, e.g.:
 
-List devices:
+```text
+Tuned to 101.500 MHz (WBFM) → Default Audio Device
+```
+
+To force a specific ALSA device instead:
 
 ```bash
 aplay -l
-speaker-test -t wav -c 2   # confirms which output you hear
+export SDR_FM_ALSA_DEVICE=plughw:0,0   # card/device from aplay -l
+./sdr_fm
 ```
 
-If sound works only on a non-default card, point the app at it before launch:
+List devices the app can see (devtools console on the Pi):
 
-```bash
-export SDR_FM_ALSA_DEVICE=plughw:1,0   # card 1 from `aplay -l`
-./sdr_fm   # or your .deb / AppImage launcher from the same shell
+```javascript
+await window.__TAURI_INTERNALS__.invoke('get_audio_devices')
 ```
 
-If Start now shows an error instead of silence, read the message — startup failures (audio device, sample rate, RTL-SDR) are reported in the status bar.
+If Start shows an error, read the status bar — audio/SDR failures are reported there.
 
 **Notes:**
 
 - First Rust build on a Pi can take a long time (30+ minutes).
 - FM demod is CPU-heavy; Pi 4/5 is recommended.
-- On Linux ARM64 the default IQ sample rate is **900 kHz** (vs 1.024 MHz on other platforms) to reduce CPU load. Override with `SDR_FM_SAMPLE_RATE` (768000–3200000).
+- On Linux ARM64 the default IQ sample rate is **768 kHz** to reduce CPU load. Override with `SDR_FM_SAMPLE_RATE` (768000–3200000).
 - The macOS-only spellcheck workaround in the Rust backend is skipped automatically on Linux.
 
 ## Performance tuning
@@ -254,7 +258,7 @@ The RTL-SDR IQ sample rate affects CPU use and tuning latency. Defaults:
 | Platform | Default |
 |----------|---------|
 | macOS / Windows / x86 Linux | 1 024 000 Hz |
-| Linux ARM64 (Raspberry Pi) | 900 000 Hz |
+| Linux ARM64 (Raspberry Pi) | 768 000 Hz |
 
 Override for any platform:
 

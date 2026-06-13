@@ -1,6 +1,10 @@
 mod audio;
 mod command;
 mod flowgraph;
+#[cfg(target_os = "linux")]
+mod linux_audio;
+#[cfg(target_os = "linux")]
+mod linux_audio_sink;
 mod silence;
 
 use std::sync::Arc;
@@ -22,9 +26,12 @@ const MIN_SAMPLE_RATE: u32 = 768_000;
 const MAX_SAMPLE_RATE: u32 = 3_200_000;
 
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = 900_000;
+const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = 768_000;
 
-#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
+#[cfg(all(target_os = "linux", not(target_arch = "aarch64")))]
+const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = DEFAULT_SAMPLE_RATE;
+
+#[cfg(not(target_os = "linux"))]
 const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = DEFAULT_SAMPLE_RATE;
 
 /// Effective IQ sample rate: `SDR_FM_SAMPLE_RATE` env override, else platform default.
@@ -70,9 +77,8 @@ pub fn spawn_dsp_thread(
     cmd_rx: Receiver<DspCommand>,
     quit: Arc<AtomicBool>,
     quit_rx: Receiver<()>,
-    ready_tx: Sender<Result<(), String>>,
+    ready_tx: Sender<Result<String, String>>,
 ) -> thread::JoinHandle<()> {
-    audio::configure_linux_output();
     thread::spawn(move || {
         if let Err(e) = flowgraph::run(
             dev,
@@ -86,6 +92,16 @@ pub fn spawn_dsp_thread(
             eprintln!("SDR FM DSP error: {e}");
         }
     })
+}
+
+#[cfg(target_os = "linux")]
+pub fn list_output_devices() -> Result<Vec<String>, String> {
+    linux_audio::list_linux_output_devices()
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn list_output_devices() -> Result<Vec<String>, String> {
+    Ok(vec!["Use system default audio output.".into()])
 }
 
 #[cfg(test)]
