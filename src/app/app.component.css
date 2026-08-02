@@ -27,11 +27,6 @@
   background: #c0c0c0;
 }
 
-.station-list-body.frozen {
-  opacity: 0.75;
-  pointer-events: none;
-}
-
 .station-list-header,
 .station-row {
   display: grid;
@@ -131,6 +126,24 @@
   flex-shrink: 0;
   display: flex;
   gap: 4px;
+  align-items: stretch;
+}
+
+.city-select {
+  flex: 0 0 auto;
+  max-width: 6.5em;
+  padding: 2px 4px;
+  font: inherit;
+  color: #000;
+  background: #fff;
+  border: 2px solid;
+  border-color: #808080 #fff #fff #808080;
+  cursor: pointer;
+}
+
+.city-select:disabled {
+  color: #808080;
+  cursor: not-allowed;
 }
 
 .transport-btn {

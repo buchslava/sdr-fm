@@ -9,8 +9,8 @@ Tune FM broadcast stations, manage a personal preset list, and listen through yo
 ## Features
 
 - **RTL-SDR WBFM reception** — demodulate FM broadcast stations (64–108 MHz)
-- **Station presets** — add, edit, and remove stations; list sorted by frequency
-- **Persisted config** — presets saved to `~/.sdr-fm/stations.json` (oxide-style user config)
+- **Station presets** — add, edit, remove; city presets or **Scan** (power + RDS)
+- **Persisted config** — city + presets in `~/.sdr-fm/` (settings.json, stations.json)
 - **Winamp-style UI** — compact 480×360 window, gray metal chrome, playlist-like station list
 - **Aller typeface** — bundled app font for a consistent look
 
@@ -86,7 +86,35 @@ npm run tauri dev
 2. Click **Start** to tune the RTL-SDR and begin playback.
 3. Click **Stop** to release the device.
 
-While a station is playing, the list and preset editing are frozen.
+While a station is playing, you can click another row to **retune on the fly**. Add / edit / delete stay disabled until Stop.
+
+### Scan band (dynamic detection)
+
+Click **Scan** to sweep **87.5–108 MHz** with the RTL-SDR:
+
+1. **Power sweep** finds strong carriers (~30–60 s, 200 kHz steps).
+2. **RDS dwell** tries names on the strongest few peaks only (~1.5 s each).
+3. Confirm to **replace** the preset list with the scan results.
+
+The scan runs on a background thread with a **~90 s** budget so the UI stays responsive. Stations without RDS keep an empty name. City presets remain available via the city dropdown.
+
+### City presets
+
+FM frequencies differ by city. Pick a city in the transport bar to load that market’s presets (confirm replaces the list). On first launch with no settings, the app approximates your city via IP geolocation (falls back to Харків).
+
+```bash
+export SDR_FM_CITY=kharkiv   # force city; skips IP detect
+export SDR_FM_CITY=kyiv
+export SDR_FM_CITY=lviv
+export SDR_FM_CITY=odesa
+```
+
+Settings and stations are stored in:
+
+```
+~/.sdr-fm/settings.json   # selected city
+~/.sdr-fm/stations.json   # preset list
+```
 
 ### Manage stations
 
@@ -100,21 +128,6 @@ While a station is playing, the list and preset editing are frozen.
 - **Name** is optional.
 - Changes are saved immediately to disk.
 
-Default presets are used when no config file exists or the file is empty. Preset **frequencies depend on your city** — national FM networks use different local allocations (e.g. Хіт FM is 102.0 MHz in Kharkiv but 96.4 MHz in Kyiv). Defaults target **Kharkiv**; override before first launch if needed:
-
-```bash
-export SDR_FM_CITY=kharkiv   # default
-export SDR_FM_CITY=kyiv
-export SDR_FM_CITY=lviv
-export SDR_FM_CITY=odesa
-```
-
-If you already have `~/.sdr-fm/stations.json`, delete or rename it after changing `SDR_FM_CITY` so defaults reload. After the first edit, stations are stored in:
-
-```
-~/.sdr-fm/stations.json
-```
-
 ### Status bar
 
 Shows tuning state, success messages, and errors (device missing, invalid frequency, save failures).
@@ -125,7 +138,7 @@ Shows tuning state, success messages, and errors (device missing, invalid freque
 Angular UI  ──invoke──▶  Tauri commands  ──▶  SdrPlayer (Rust)
                               │
                               ├── FutureSDR flowgraph: RTL-SDR → WBFM demod → de-emphasis → audio
-                              └── ~/.sdr-fm/stations.json  (preset persistence)
+                              └── ~/.sdr-fm/  (settings.json + stations.json)
 ```
 
 - The Rust backend opens the RTL-SDR via **SoapySDR** (`driver=rtlsdr`).
@@ -138,7 +151,7 @@ Angular UI  ──invoke──▶  Tauri commands  ──▶  SdrPlayer (Rust)
 ```
 src/                    Angular frontend (Winamp UI, station CRUD)
 src-tauri/              Rust backend (SDR, DSP, config)
-  src/config/           ~/.sdr-fm/stations.json load/save
+  src/config/           city presets, settings.json, stations.json
   src/dsp/              FutureSDR WBFM flowgraph
   icons/                App icon set (macOS, Windows, Linux)
 ```

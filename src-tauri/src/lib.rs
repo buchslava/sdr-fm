@@ -5,8 +5,13 @@ mod macos_menu;
 mod macos_spellcheck;
 mod sdr;
 
-use config::{Station, load_stations, save_stations};
+use config::{
+    CityInfo, Station, get_city_id, list_cities, load_stations, save_stations,
+    set_city_and_reload,
+};
+use dsp::ScanProgress;
 use sdr::SdrPlayer;
+use tauri::{AppHandle, Emitter};
 
 fn init_logging() {
     if std::env::var_os("FUTURESDR_LOG").is_none() {
@@ -28,6 +33,25 @@ fn stop_fm(player: tauri::State<'_, SdrPlayer>) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn scan_fm_band(
+    app: AppHandle,
+    player: tauri::State<'_, SdrPlayer>,
+) -> Result<Vec<Station>, String> {
+    // Release the dongle from playback before the blocking scan thread opens it.
+    player.stop()?;
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        dsp::scan_band(|progress: ScanProgress| {
+            let _ = app.emit("scan-progress", &progress);
+        })
+    })
+    .await
+    .map_err(|e| format!("Scan task failed: {e}"))?
+}
+
+#[tauri::command]
 fn get_stations() -> Vec<Station> {
     load_stations()
 }
@@ -35,6 +59,21 @@ fn get_stations() -> Vec<Station> {
 #[tauri::command]
 fn set_stations(stations: Vec<Station>) -> Result<(), String> {
     save_stations(&stations)
+}
+
+#[tauri::command]
+fn get_cities() -> Vec<CityInfo> {
+    list_cities()
+}
+
+#[tauri::command]
+fn get_city() -> String {
+    get_city_id()
+}
+
+#[tauri::command]
+fn set_city(city: String) -> Result<Vec<Station>, String> {
+    set_city_and_reload(&city)
 }
 
 #[tauri::command]
@@ -54,8 +93,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_fm,
             stop_fm,
+            scan_fm_band,
             get_stations,
             set_stations,
+            get_cities,
+            get_city,
+            set_city,
             get_audio_devices
         ]);
 

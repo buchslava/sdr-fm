@@ -1,5 +1,7 @@
 mod command;
 mod flowgraph;
+mod rds;
+mod scan;
 mod silence;
 
 use std::sync::Arc;
@@ -10,6 +12,7 @@ use crossbeam_channel::{Receiver, Sender};
 use futuresdr::seify::{Device, GenericDevice};
 
 pub use command::DspCommand;
+pub use scan::{ScanProgress, scan_band};
 
 pub const RTL_SDR_OPEN_ARGS: &[&str] = &[
     "driver=soapy,soapy_driver=rtlsdr",

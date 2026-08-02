@@ -24,13 +24,12 @@
         </button>
       </span>
     </div>
-    <div class="station-list-body" [class.frozen]="isPlaying()">
+    <div class="station-list-body">
       @for (station of store.stations(); track station.id) {
         <button
           type="button"
           class="station-row"
           [class.selected]="store.selectedId() === station.id"
-          [disabled]="isPlaying()"
           (click)="selectStation(station.id)"
           (dblclick)="openEdit(station)"
         >
@@ -42,15 +41,40 @@
   </div>
 
   <div class="transport">
+    <select
+      class="city-select"
+      title="City presets"
+      [disabled]="isPlaying() || isScanning()"
+      [value]="store.cityId()"
+      (change)="onCityChange($event)"
+    >
+      @for (city of store.cities(); track city.id) {
+        <option [value]="city.id">{{ city.name }}</option>
+      }
+    </select>
+    <button
+      type="button"
+      class="transport-btn"
+      (click)="scanBand()"
+      [disabled]="isPlaying() || isScanning()"
+      title="Scan FM band (power + RDS)"
+    >
+      Scan
+    </button>
     <button
       type="button"
       class="transport-btn"
       (click)="listen()"
-      [disabled]="isPlaying() || !store.selectedId()"
+      [disabled]="isPlaying() || isScanning() || !store.selectedId()"
     >
       Start
     </button>
-    <button type="button" class="transport-btn" (click)="stop()" [disabled]="!isPlaying()">
+    <button
+      type="button"
+      class="transport-btn"
+      (click)="stop()"
+      [disabled]="!isPlaying() || isScanning()"
+    >
       Stop
     </button>
   </div>

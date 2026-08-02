@@ -4,6 +4,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use super::city::City;
+use super::settings::{current_city, resolve_city, save_city};
+
 const FM_MIN_KHZ: u32 = 64_000;
 const FM_MAX_KHZ: u32 = 1_080_000;
 
@@ -29,35 +32,10 @@ fn default_station(id: &str, name: &str, frequency_khz: u32) -> Station {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DefaultCity {
-    Kyiv,
-    Lviv,
-    Kharkiv,
-    Odesa,
-}
-
-/// City for bundled presets. Override with `SDR_FM_CITY` (`kyiv`, `lviv`, `kharkiv`, `odesa`).
-fn parse_default_city(raw: &str) -> DefaultCity {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "kyiv" | "kiev" => DefaultCity::Kyiv,
-        "lviv" | "lvov" | "lwow" => DefaultCity::Lviv,
-        "kharkiv" | "kharkov" => DefaultCity::Kharkiv,
-        "odesa" | "odessa" => DefaultCity::Odesa,
-        _ => DefaultCity::Kharkiv,
-    }
-}
-
-fn default_city() -> DefaultCity {
-    std::env::var("SDR_FM_CITY")
-        .map(|value| parse_default_city(&value))
-        .unwrap_or(DefaultCity::Kharkiv)
-}
-
-fn default_stations_for_city(city: DefaultCity) -> Vec<Station> {
-    // FM networks use different local frequencies per city (radiomap.eu / official station sites).
+/// Bundled FM presets for a city (local frequencies differ by market).
+pub fn stations_for_city(city: City) -> Vec<Station> {
     match city {
-        DefaultCity::Kyiv => vec![
+        City::Kyiv => vec![
             default_station("default-95200", "Мелодія FM", 95_200),
             default_station("default-96000", "Радіо NV", 96_000),
             default_station("default-96400", "Хіт FM", 96_400),
@@ -72,7 +50,7 @@ fn default_stations_for_city(city: DefaultCity) -> Vec<Station> {
             default_station("default-107400", "Авторадіо", 107_400),
             default_station("default-107900", "Наше радіо", 107_900),
         ],
-        DefaultCity::Lviv => vec![
+        City::Lviv => vec![
             default_station("default-88600", "Радіо NV", 88_600),
             default_station("default-89100", "Радіо Рокс", 89_100),
             default_station("default-90400", "Шлягер FM", 90_400),
@@ -86,7 +64,7 @@ fn default_stations_for_city(city: DefaultCity) -> Vec<Station> {
             default_station("default-106000", "Наше радіо", 106_000),
             default_station("default-107200", "Радіо Байрактар", 107_200),
         ],
-        DefaultCity::Kharkiv => vec![
+        City::Kharkiv => vec![
             default_station("default-88000", "Радіо Байрактар", 88_000),
             default_station("default-89300", "Радіо Рокс", 89_300),
             default_station("default-90000", "Радіо Релакс", 90_000),
@@ -102,7 +80,7 @@ fn default_stations_for_city(city: DefaultCity) -> Vec<Station> {
             default_station("default-107400", "Країна FM", 107_400),
             default_station("default-107900", "Мелодія FM", 107_900),
         ],
-        DefaultCity::Odesa => vec![
+        City::Odesa => vec![
             default_station("default-87900", "Радіо NV", 87_900),
             default_station("default-89000", "Мелодія FM", 89_000),
             default_station("default-90200", "Радіо Рокс", 90_200),
@@ -120,7 +98,7 @@ fn default_stations_for_city(city: DefaultCity) -> Vec<Station> {
 }
 
 fn default_stations() -> Vec<Station> {
-    default_stations_for_city(default_city())
+    stations_for_city(resolve_city())
 }
 
 fn sort_stations(stations: &mut [Station]) {
@@ -207,14 +185,27 @@ pub fn save_stations(stations: &[Station]) -> Result<(), String> {
     };
 
     let path = dir.join("stations.json");
-    let file = StationsFile {
-        stations,
-    };
+    let file = StationsFile { stations };
 
     let data = serde_json::to_string_pretty(&file)
         .map_err(|e| format!("Failed to serialize stations: {e}"))?;
 
     fs::write(path, data).map_err(|e| format!("Failed to write stations: {e}"))
+}
+
+/// Persist city and replace the station list with that city's bundled presets.
+pub fn set_city_and_reload(city_id: &str) -> Result<Vec<Station>, String> {
+    let city = City::parse(city_id).ok_or_else(|| {
+        format!("Unknown city '{city_id}'. Use kyiv, lviv, kharkiv, or odesa.")
+    })?;
+    save_city(city)?;
+    let stations = stations_for_city(city);
+    save_stations(&stations)?;
+    Ok(stations)
+}
+
+pub fn get_city_id() -> String {
+    current_city().id().to_string()
 }
 
 #[cfg(test)]
@@ -223,31 +214,15 @@ mod tests {
 
     #[test]
     fn default_stations_are_valid() {
-        validate_stations(&default_stations()).unwrap();
+        validate_stations(&stations_for_city(City::Kharkiv)).unwrap();
     }
 
     #[test]
     fn all_city_presets_are_valid() {
-        for city in [
-            DefaultCity::Kyiv,
-            DefaultCity::Lviv,
-            DefaultCity::Kharkiv,
-            DefaultCity::Odesa,
-        ] {
-            validate_stations(&default_stations_for_city(city))
-                .unwrap_or_else(|err| panic!("{city:?}: {err}"));
+        for city in City::ALL {
+            validate_stations(&stations_for_city(city))
+                .unwrap_or_else(|err| panic!("{}: {err}", city.id()));
         }
-    }
-
-    #[test]
-    fn parses_default_city_aliases() {
-        assert_eq!(parse_default_city("kyiv"), DefaultCity::Kyiv);
-        assert_eq!(parse_default_city("Kiev"), DefaultCity::Kyiv);
-        assert_eq!(parse_default_city("lviv"), DefaultCity::Lviv);
-        assert_eq!(parse_default_city("lvov"), DefaultCity::Lviv);
-        assert_eq!(parse_default_city("kharkiv"), DefaultCity::Kharkiv);
-        assert_eq!(parse_default_city("odessa"), DefaultCity::Odesa);
-        assert_eq!(parse_default_city("unknown"), DefaultCity::Kharkiv);
     }
 
     #[test]

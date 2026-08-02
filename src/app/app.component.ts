@@ -2,10 +2,12 @@ import {
   Component,
   computed,
   inject,
+  OnDestroy,
   OnInit,
   signal,
 } from "@angular/core";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { ask } from "@tauri-apps/plugin-dialog";
 
 import {
@@ -15,16 +17,24 @@ import {
 import { FmStation, formatMhz } from "./models/fm-station";
 import { StationStoreService } from "./services/station-store.service";
 
+interface ScanProgressEvent {
+  phase: string;
+  current: number;
+  total: number;
+  mhz: number;
+}
+
 @Component({
   selector: "app-root",
   imports: [StationFormModalComponent],
   templateUrl: "./app.component.html",
   styleUrl: "./app.component.css",
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnInit, OnDestroy {
   readonly store = inject(StationStoreService);
 
   readonly isPlaying = signal(false);
+  readonly isScanning = signal(false);
   readonly status = signal("Ready.");
   readonly error = signal("");
   readonly modalOpen = signal(false);
@@ -32,12 +42,24 @@ export class AppComponent implements OnInit {
   readonly modalStation = signal<FmStation | null>(null);
 
   readonly statusLine = computed(() => this.error() || this.status());
-  readonly crudDisabled = computed(() => this.isPlaying());
+  readonly crudDisabled = computed(() => this.isPlaying() || this.isScanning());
 
   readonly formatMhz = formatMhz;
 
+  private unlistenScan: UnlistenFn | null = null;
+
   async ngOnInit(): Promise<void> {
     try {
+      this.unlistenScan = await listen<ScanProgressEvent>(
+        "scan-progress",
+        (event) => {
+          const p = event.payload;
+          const phase = p.phase === "rds" ? "RDS" : "Power";
+          this.status.set(
+            `Scanning ${phase} ${p.current}/${p.total} @ ${p.mhz.toFixed(1)} MHz…`,
+          );
+        },
+      );
       await this.store.load();
       this.status.set("Ready.");
     } catch (err) {
@@ -45,15 +67,39 @@ export class AppComponent implements OnInit {
     }
   }
 
-  selectStation(id: string): void {
-    if (this.isPlaying()) {
+  ngOnDestroy(): void {
+    if (this.unlistenScan) {
+      this.unlistenScan();
+      this.unlistenScan = null;
+    }
+  }
+
+  async selectStation(id: string): Promise<void> {
+    this.store.select(id);
+
+    if (!this.isPlaying()) {
       return;
     }
-    this.store.select(id);
+
+    const frequency = this.store.selectedFrequencyKhz();
+    if (frequency === null) {
+      return;
+    }
+
+    this.error.set("");
+    try {
+      this.status.set("Tuning...");
+      const message = await invoke<string>("start_fm", {
+        frequencyKhz: frequency,
+      });
+      this.status.set(message);
+    } catch (err) {
+      this.error.set(String(err));
+    }
   }
 
   openAdd(): void {
-    if (this.isPlaying()) {
+    if (this.isPlaying() || this.isScanning()) {
       return;
     }
 
@@ -63,7 +109,7 @@ export class AppComponent implements OnInit {
   }
 
   openEdit(station: FmStation): void {
-    if (this.isPlaying()) {
+    if (this.isPlaying() || this.isScanning()) {
       return;
     }
 
@@ -159,6 +205,81 @@ export class AppComponent implements OnInit {
       this.status.set("Stopped.");
     } catch (err) {
       this.error.set(String(err));
+    }
+  }
+
+  async onCityChange(event: Event): Promise<void> {
+    const select = event.target as HTMLSelectElement;
+    const nextCity = select.value;
+    const previousCity = this.store.cityId();
+
+    if (!nextCity || nextCity === previousCity) {
+      return;
+    }
+
+    const cityName =
+      this.store.cities().find((city) => city.id === nextCity)?.name ?? nextCity;
+
+    const confirmed = await ask(
+      `Replace station list with ${cityName} presets?`,
+      {
+        title: "Change city",
+        kind: "warning",
+      },
+    );
+
+    if (!confirmed) {
+      select.value = previousCity;
+      return;
+    }
+
+    this.error.set("");
+    try {
+      await this.store.setCity(nextCity);
+      this.status.set(`Loaded ${cityName} presets.`);
+    } catch (err) {
+      select.value = previousCity;
+      this.error.set(String(err));
+    }
+  }
+
+  async scanBand(): Promise<void> {
+    if (this.isPlaying() || this.isScanning()) {
+      return;
+    }
+
+    this.error.set("");
+    this.isScanning.set(true);
+    this.status.set("Scanning FM band…");
+
+    try {
+      const found = await invoke<FmStation[]>("scan_fm_band");
+      const named = found.filter((s) => s.name.trim().length > 0).length;
+      const confirmed = await ask(
+        `Replace station list with ${found.length} scanned stations` +
+          (named > 0 ? ` (${named} with RDS names)` : "") +
+          "?",
+        {
+          title: "Scan complete",
+          kind: "warning",
+        },
+      );
+
+      if (!confirmed) {
+        this.status.set("Scan discarded.");
+        return;
+      }
+
+      await this.store.replaceStations(found);
+      this.status.set(
+        `Loaded ${found.length} scanned stations` +
+          (named > 0 ? ` (${named} named).` : "."),
+      );
+    } catch (err) {
+      this.error.set(String(err));
+      this.status.set("Scan failed.");
+    } finally {
+      this.isScanning.set(false);
     }
   }
 }
