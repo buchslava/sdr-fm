@@ -46,14 +46,24 @@
   font-display: swap;
 }
 
+:root {
+  --wood-dark: #3f2c22;
+  --face-cream: #efe3cf;
+  --scale-ink: #2b2119;
+  --needle-red: #c42a1c;
+  --scan-amber: #d4920a;
+  --btn-chrome: #d8c5aa;
+}
+
 html,
 body {
   height: 100%;
   margin: 0;
   overflow: hidden;
   font-family: "Aller", Tahoma, Arial, sans-serif;
-  font-size: 11px;
-  background: #c0c0c0;
+  font-size: 12px;
+  background: var(--wood-dark);
+  color: var(--scale-ink);
 }
 
 button,

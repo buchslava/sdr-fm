@@ -2,7 +2,7 @@
 
 Desktop wideband FM receiver for **RTL-SDR**, built with **Tauri**, **Angular**, and **FutureSDR**.
 
-Tune FM broadcast stations, manage a personal preset list, and listen through your default audio output — in a compact Winamp-inspired UI.
+Tune FM broadcast stations, manage a personal preset list, and listen through your default audio output — in a Rigonda-inspired vintage console UI.
 
 ![SDR FM icon](src-tauri/icons/icon.png)
 
@@ -11,7 +11,7 @@ Tune FM broadcast stations, manage a personal preset list, and listen through yo
 - **RTL-SDR WBFM reception** — demodulate FM broadcast stations (64–108 MHz)
 - **Station presets** — add, edit, remove; city presets or **Scan** (power + RDS)
 - **Persisted config** — city + presets in `~/.sdr-fm/` (settings.json, stations.json)
-- **Winamp-style UI** — compact 480×360 window, gray metal chrome, playlist-like station list
+- **Rigonda-style UI** — 760×560 console with horizontal FM dial, preset labels, scan markers, and vintage transport controls
 - **Aller typeface** — bundled app font for a consistent look
 
 ## Prerequisites

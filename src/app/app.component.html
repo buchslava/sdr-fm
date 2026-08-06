@@ -1,12 +1,37 @@
-<main class="winamp-panel">
-  <div class="station-list">
-    <div class="station-list-header">
-      <span class="col-freq">Freq</span>
-      <span class="col-name">Name</span>
-      <span class="header-actions">
+<main class="rigonda-console">
+  <section class="faceplate">
+    <app-rigonda-dial
+      [stations]="store.stations()"
+      [selectedId]="store.selectedId()"
+      [scanHits]="scanHits()"
+      [disabled]="false"
+      (stationSelected)="selectStation($event)"
+      (noPresetNearby)="onNoPresetNearby()"
+    />
+
+    <div class="readout-strip">
+      <div class="readout">
+        <span class="readout-label">Tuned</span>
+        <span class="readout-freq">
+          @if (store.selectedStation(); as station) {
+            {{ formatMhz(station.frequencyKhz) }} MHz
+          } @else {
+            —
+          }
+        </span>
+        <span class="readout-name">
+          @if (store.selectedStation(); as station) {
+            {{ stationLabel(station) }}
+          } @else {
+            No preset selected
+          }
+        </span>
+      </div>
+
+      <div class="crud-actions">
         <button
           type="button"
-          class="icon-btn"
+          class="vintage-btn icon-btn"
           title="Add station"
           (click)="openAdd()"
           [disabled]="crudDisabled()"
@@ -15,30 +40,25 @@
         </button>
         <button
           type="button"
-          class="icon-btn"
+          class="vintage-btn"
+          title="Edit station"
+          (click)="openEditSelected()"
+          [disabled]="crudDisabled() || !store.selectedId()"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          class="vintage-btn icon-btn"
           title="Remove station"
           (click)="deleteSelected()"
           [disabled]="crudDisabled() || !store.selectedId()"
         >
           ×
         </button>
-      </span>
+      </div>
     </div>
-    <div class="station-list-body">
-      @for (station of store.stations(); track station.id) {
-        <button
-          type="button"
-          class="station-row"
-          [class.selected]="store.selectedId() === station.id"
-          (click)="selectStation(station.id)"
-          (dblclick)="openEdit(station)"
-        >
-          <span class="col-freq">{{ formatMhz(station.frequencyKhz) }}</span>
-          <span class="col-name">{{ station.name }}</span>
-        </button>
-      }
-    </div>
-  </div>
+  </section>
 
   <div class="transport">
     <select
@@ -54,7 +74,7 @@
     </select>
     <button
       type="button"
-      class="transport-btn"
+      class="vintage-btn transport-btn"
       (click)="scanBand()"
       [disabled]="isPlaying() || isScanning()"
       title="Scan FM band (power + RDS)"
@@ -63,7 +83,7 @@
     </button>
     <button
       type="button"
-      class="transport-btn"
+      class="vintage-btn transport-btn"
       (click)="listen()"
       [disabled]="isPlaying() || isScanning() || !store.selectedId()"
     >
@@ -71,7 +91,7 @@
     </button>
     <button
       type="button"
-      class="transport-btn"
+      class="vintage-btn transport-btn"
       (click)="stop()"
       [disabled]="!isPlaying() || isScanning()"
     >

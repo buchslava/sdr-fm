@@ -10,12 +10,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { ask } from "@tauri-apps/plugin-dialog";
 
+import { RigondaDialComponent } from "./components/rigonda-dial/rigonda-dial.component";
 import {
   StationFormModalComponent,
   StationFormMode,
 } from "./components/station-form-modal/station-form-modal.component";
 import { FmStation, formatMhz } from "./models/fm-station";
 import { StationStoreService } from "./services/station-store.service";
+import { stationLabel } from "./utils/fm-dial";
 
 interface ScanProgressEvent {
   phase: string;
@@ -26,7 +28,7 @@ interface ScanProgressEvent {
 
 @Component({
   selector: "app-root",
-  imports: [StationFormModalComponent],
+  imports: [RigondaDialComponent, StationFormModalComponent],
   templateUrl: "./app.component.html",
   styleUrl: "./app.component.css",
 })
@@ -40,11 +42,13 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly modalOpen = signal(false);
   readonly modalMode = signal<StationFormMode>("add");
   readonly modalStation = signal<FmStation | null>(null);
+  readonly scanHits = signal<FmStation[]>([]);
 
   readonly statusLine = computed(() => this.error() || this.status());
   readonly crudDisabled = computed(() => this.isPlaying() || this.isScanning());
 
   readonly formatMhz = formatMhz;
+  readonly stationLabel = stationLabel;
 
   private unlistenScan: UnlistenFn | null = null;
 
@@ -72,6 +76,13 @@ export class AppComponent implements OnInit, OnDestroy {
       this.unlistenScan();
       this.unlistenScan = null;
     }
+  }
+
+  onNoPresetNearby(): void {
+    if (this.error()) {
+      return;
+    }
+    this.status.set("No preset near that position.");
   }
 
   async selectStation(id: string): Promise<void> {
@@ -108,6 +119,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.modalOpen.set(true);
   }
 
+  openEditSelected(): void {
+    const station = this.store.selectedStation();
+    if (!station || this.isPlaying() || this.isScanning()) {
+      return;
+    }
+
+    this.openEdit(station);
+  }
+
   openEdit(station: FmStation): void {
     if (this.isPlaying() || this.isScanning()) {
       return;
@@ -134,6 +154,7 @@ export class AppComponent implements OnInit, OnDestroy {
         await this.store.update(station);
         this.status.set("Station updated.");
       }
+      this.scanHits.set([]);
       this.closeModal();
     } catch (err) {
       this.error.set(String(err));
@@ -167,6 +188,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
     try {
       await this.store.remove(station.id);
+      this.scanHits.set([]);
       this.status.set("Station removed.");
     } catch (err) {
       this.error.set(String(err));
@@ -236,6 +258,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.error.set("");
     try {
       await this.store.setCity(nextCity);
+      this.scanHits.set([]);
       this.status.set(`Loaded ${cityName} presets.`);
     } catch (err) {
       select.value = previousCity;
@@ -250,10 +273,12 @@ export class AppComponent implements OnInit, OnDestroy {
 
     this.error.set("");
     this.isScanning.set(true);
+    this.scanHits.set([]);
     this.status.set("Scanning FM band…");
 
     try {
       const found = await invoke<FmStation[]>("scan_fm_band");
+      this.scanHits.set(found);
       const named = found.filter((s) => s.name.trim().length > 0).length;
       const confirmed = await ask(
         `Replace station list with ${found.length} scanned stations` +
@@ -266,16 +291,19 @@ export class AppComponent implements OnInit, OnDestroy {
       );
 
       if (!confirmed) {
+        this.scanHits.set([]);
         this.status.set("Scan discarded.");
         return;
       }
 
       await this.store.replaceStations(found);
+      this.scanHits.set([]);
       this.status.set(
         `Loaded ${found.length} scanned stations` +
           (named > 0 ? ` (${named} named).` : "."),
       );
     } catch (err) {
+      this.scanHits.set([]);
       this.error.set(String(err));
       this.status.set("Scan failed.");
     } finally {

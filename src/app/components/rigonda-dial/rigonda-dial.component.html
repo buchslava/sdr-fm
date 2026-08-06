@@ -1,0 +1,116 @@
+<div
+  class="dial"
+  [class.disabled]="disabled()"
+>
+  <div class="dial-window">
+    <div class="dial-scale-label">FM MHz</div>
+
+    <div
+      #track
+      class="dial-scale"
+      tabindex="0"
+      role="slider"
+      aria-label="FM station dial"
+      [attr.aria-valuemin]="87.5"
+      [attr.aria-valuemax]="108"
+      [attr.aria-valuenow]="pointerPercent()"
+      (click)="onTrackClick($event)"
+      (keydown)="onTrackKeydown($event)"
+    >
+      <div class="numerals-row" aria-hidden="true">
+        @for (numeral of numerals; track numeral.mhz) {
+          <span
+            class="numeral"
+            [class.edge-start]="numeral.mhz === 87.5"
+            [class.edge-end]="numeral.mhz === 108"
+            [style.left.%]="numeral.xPercent"
+          >
+            {{ formatNumeral(numeral.mhz) }}
+          </span>
+        }
+      </div>
+
+      <div class="scale-track">
+        <svg class="dial-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+          @for (tick of ticks; track tick.mhz) {
+            <line
+              class="tick"
+              [class.major]="tick.major"
+              [attr.x1]="tick.xPercent"
+              [attr.x2]="tick.xPercent"
+              [attr.y1]="tick.major ? 18 : 28"
+              [attr.y2]="92"
+            />
+          }
+        </svg>
+
+        @for (marker of scanMarkers(); track marker.station.id) {
+          <div
+            class="scan-marker"
+            [class.over-preset]="marker.overlapsPreset"
+            [style.left.%]="marker.xPercent"
+            [title]="marker.station.name || (marker.station.frequencyKhz / 1000).toFixed(1) + ' MHz'"
+          ></div>
+        }
+
+        @for (marker of presetMarkers(); track marker.station.id) {
+          <button
+            type="button"
+            class="preset-tick-hit"
+            [class.selected]="selectedId() === marker.station.id"
+            [class.tick-only]="!marker.showLabel"
+            [style.left.%]="marker.xPercent"
+            [title]="marker.label"
+            [attr.aria-label]="marker.label"
+            (click)="selectStationById(marker.station.id, $event)"
+          >
+            <span class="preset-tick"></span>
+          </button>
+        }
+
+        <div
+          class="dial-pointer"
+          [class.dragging]="dragging()"
+          [style.left.%]="pointerPercent()"
+          (pointerdown)="onPointerDown($event)"
+          (pointermove)="onPointerMove($event)"
+          (pointerup)="onPointerUp($event)"
+          (pointercancel)="onPointerUp($event)"
+        >
+          <span class="needle"></span>
+          <span class="knob"></span>
+        </div>
+      </div>
+
+      <div
+        class="preset-band"
+        [style.--lane-count]="laneCount"
+      >
+        @for (marker of presetMarkers(); track marker.station.id) {
+          @if (marker.showLabel) {
+            <button
+              type="button"
+              class="label-slot"
+              [class.selected]="selectedId() === marker.station.id"
+              [style.left.%]="marker.labelXPercent"
+              [style.--label-lane]="marker.labelTier"
+              [title]="marker.label"
+              [attr.aria-label]="marker.label"
+              (click)="selectStationById(marker.station.id, $event)"
+            >
+              @if (leaderOffset(marker) !== 0) {
+                <span
+                  class="label-leader"
+                  [style.--leader-shift.%]="leaderOffset(marker)"
+                ></span>
+              }
+              <span class="preset-label">
+                {{ marker.label }}
+              </span>
+            </button>
+          }
+        }
+      </div>
+    </div>
+  </div>
+</div>
