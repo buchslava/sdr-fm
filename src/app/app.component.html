@@ -12,8 +12,6 @@
 
       <div class="readout-strip">
         <div class="readout">
-          <span class="readout-city">{{ currentCityName() }}</span>
-          <span class="readout-sep" aria-hidden="true">·</span>
           @if (store.selectedStation(); as station) {
             <span class="readout-freq">{{ formatMhz(station.frequencyKhz) }} MHz</span>
             @if (showReadoutName(station)) {
@@ -27,45 +25,6 @@
 
       <div class="control-bar">
         <div class="control-group">
-          <div class="city-picker">
-            <button
-              type="button"
-              class="round-btn"
-              [title]="'City: ' + currentCityName()"
-              aria-label="City presets"
-              [attr.aria-expanded]="cityMenuOpen()"
-              [disabled]="isPlaying() || isScanning()"
-              (click)="toggleCityMenu($event)"
-            >
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  d="M8 1.5a4 4 0 0 0-4 4c0 2.8 4 8.5 4 8.5s4-5.7 4-8.5a4 4 0 0 0-4-4Zm0 2.2a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6Z"
-                />
-              </svg>
-            </button>
-            @if (cityMenuOpen()) {
-              <div
-                class="city-menu"
-                role="menu"
-                (click)="$event.stopPropagation()"
-                (keydown.escape)="closeCityMenu()"
-              >
-                @for (city of store.cities(); track city.id) {
-                  <button
-                    type="button"
-                    class="city-menu-item"
-                    role="menuitem"
-                    [class.active]="store.cityId() === city.id"
-                    (click)="selectCity(city.id)"
-                  >
-                    {{ city.name }}
-                  </button>
-                }
-              </div>
-            }
-          </div>
-
           <button
             type="button"
             class="round-btn"

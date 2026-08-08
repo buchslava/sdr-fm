@@ -67,20 +67,6 @@
   white-space: nowrap;
 }
 
-.readout-city {
-  flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 700;
-  color: #efe3cf;
-  white-space: nowrap;
-}
-
-.readout-sep {
-  flex-shrink: 0;
-  color: rgba(244, 234, 216, 0.45);
-  white-space: nowrap;
-}
-
 .readout-freq {
   flex-shrink: 0;
   font-family: Georgia, "Times New Roman", serif;
@@ -173,48 +159,6 @@
 
 .round-btn-stop:not(:disabled) {
   color: #6b1f14;
-}
-
-.city-picker {
-  position: relative;
-}
-
-.city-menu {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 20;
-  min-width: 9em;
-  padding: 4px;
-  background: linear-gradient(180deg, #f3ead8 0%, #e6d9c0 100%);
-  border: 1px solid #6b5344;
-  border-radius: 6px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-}
-
-.city-menu-item {
-  display: block;
-  width: 100%;
-  padding: 6px 10px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: #2b2119;
-  font: inherit;
-  font-size: 11px;
-  text-align: left;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.city-menu-item:hover {
-  background: rgba(255, 255, 255, 0.45);
-}
-
-.city-menu-item.active {
-  font-weight: 700;
-  color: var(--needle-red);
 }
 
 .status-bar {

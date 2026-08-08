@@ -1,7 +1,6 @@
 import {
   Component,
   computed,
-  HostListener,
   inject,
   OnDestroy,
   OnInit,
@@ -43,33 +42,11 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly modalMode = signal<StationFormMode>("add");
   readonly modalStation = signal<FmStation | null>(null);
   readonly scanHits = signal<FmStation[]>([]);
-  readonly cityMenuOpen = signal(false);
 
   readonly statusLine = computed(() => this.error() || this.status());
   readonly crudDisabled = computed(() => this.isPlaying() || this.isScanning());
-  readonly currentCityName = computed(() => {
-    const city = this.store
-      .cities()
-      .find((entry) => entry.id === this.store.cityId());
-    return city?.name ?? "Київ";
-  });
 
   readonly formatMhz = formatMhz;
-
-  @HostListener("document:click")
-  onDocumentClick(): void {
-    this.closeCityMenu();
-  }
-
-  @HostListener("document:keydown.escape")
-  onEscapeKey(): void {
-    this.closeCityMenu();
-  }
-
-  showReadoutName(station: FmStation): boolean {
-    const name = station.name.trim();
-    return name.length > 0 && name !== formatMhz(station.frequencyKhz);
-  }
 
   private unlistenScan: UnlistenFn | null = null;
 
@@ -97,6 +74,11 @@ export class AppComponent implements OnInit, OnDestroy {
       this.unlistenScan();
       this.unlistenScan = null;
     }
+  }
+
+  showReadoutName(station: FmStation): boolean {
+    const name = station.name.trim();
+    return name.length > 0 && name !== formatMhz(station.frequencyKhz);
   }
 
   onNoPresetNearby(): void {
@@ -246,55 +228,6 @@ export class AppComponent implements OnInit, OnDestroy {
       await invoke("stop_fm");
       this.isPlaying.set(false);
       this.status.set("Stopped.");
-    } catch (err) {
-      this.error.set(String(err));
-    }
-  }
-
-  toggleCityMenu(event: Event): void {
-    event.stopPropagation();
-    if (this.isPlaying() || this.isScanning()) {
-      return;
-    }
-    this.cityMenuOpen.update((open) => !open);
-  }
-
-  closeCityMenu(): void {
-    this.cityMenuOpen.set(false);
-  }
-
-  async selectCity(cityId: string): Promise<void> {
-    this.closeCityMenu();
-    await this.changeCity(cityId);
-  }
-
-  async changeCity(nextCity: string): Promise<void> {
-    const previousCity = this.store.cityId();
-
-    if (!nextCity || nextCity === previousCity) {
-      return;
-    }
-
-    const cityName =
-      this.store.cities().find((city) => city.id === nextCity)?.name ?? nextCity;
-
-    const confirmed = await ask(
-      `Replace station list with ${cityName} presets?`,
-      {
-        title: "Change city",
-        kind: "warning",
-      },
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    this.error.set("");
-    try {
-      await this.store.setCity(nextCity);
-      this.scanHits.set([]);
-      this.status.set(`Loaded ${cityName} presets.`);
     } catch (err) {
       this.error.set(String(err));
     }

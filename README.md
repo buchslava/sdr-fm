@@ -9,8 +9,8 @@ Tune FM broadcast stations, manage a personal preset list, and listen through yo
 ## Features
 
 - **RTL-SDR WBFM reception** — demodulate FM broadcast stations (64–108 MHz)
-- **Station presets** — add, edit, remove; city presets or **Scan** (power + RDS)
-- **Persisted config** — city + presets in `~/.sdr-fm/` (settings.json, stations.json)
+- **Station presets** — bundled defaults, add/edit/remove, or **Scan** (power + RDS)
+- **Persisted config** — presets in `~/.sdr-fm/stations.json`
 - **Rigonda-style UI** — 760×440 console with horizontal FM dial, preset labels, scan markers, and round vintage controls
 - **Aller typeface** — bundled app font for a consistent look
 
@@ -82,11 +82,15 @@ npm run tauri dev
 
 ### Listen
 
-1. Select a station in the **Freq / Name** list.
+1. Select a station on the FM dial.
 2. Click **Start** to tune the RTL-SDR and begin playback.
 3. Click **Stop** to release the device.
 
-While a station is playing, you can click another row to **retune on the fly**. Add / edit / delete stay disabled until Stop.
+While a station is playing, you can select another preset to **retune on the fly**. Add / edit / remove stay disabled until Stop.
+
+### Default presets
+
+On first launch (or if `stations.json` is missing), the app loads a **single bundled preset list** of Ukrainian FM stations. Edit it freely; changes are saved to disk.
 
 ### Scan band (dynamic detection)
 
@@ -96,33 +100,21 @@ Click **Scan** to sweep **87.5–108 MHz** with the RTL-SDR:
 2. **RDS dwell** tries names on the strongest few peaks only (~1.5 s each).
 3. Confirm to **replace** the preset list with the scan results.
 
-The scan runs on a background thread with a **~90 s** budget so the UI stays responsive. Stations without RDS keep an empty name. City presets remain available via the city dropdown.
+The scan runs on a background thread with a **~90 s** budget so the UI stays responsive. Stations without RDS keep an empty name; existing labels at similar frequencies are preserved when you confirm the replace.
 
-### City presets
-
-FM frequencies differ by city. Pick a city in the transport bar to load that market’s presets (confirm replaces the list). On first launch with no settings, the app approximates your city via IP geolocation (falls back to Харків).
-
-```bash
-export SDR_FM_CITY=kharkiv   # force city; skips IP detect
-export SDR_FM_CITY=kyiv
-export SDR_FM_CITY=lviv
-export SDR_FM_CITY=odesa
-```
-
-Settings and stations are stored in:
+Presets are stored in:
 
 ```
-~/.sdr-fm/settings.json   # selected city
-~/.sdr-fm/stations.json   # preset list
+~/.sdr-fm/stations.json
 ```
 
 ### Manage stations
 
 | Action | How |
 |--------|-----|
-| **Add** | Click **+** in the list header |
-| **Edit** | Double-click a row |
-| **Delete** | Select a row, click **×**, confirm |
+| **Add** | Round **+** button |
+| **Edit** | Round pencil button (selected preset) |
+| **Delete** | Round **×** button, confirm |
 
 - **Frequency** is entered in MHz (e.g. `101.5`). Valid range: **64.0–1080.0 MHz** (FM band).
 - **Name** is optional.
@@ -138,7 +130,7 @@ Shows tuning state, success messages, and errors (device missing, invalid freque
 Angular UI  ──invoke──▶  Tauri commands  ──▶  SdrPlayer (Rust)
                               │
                               ├── FutureSDR flowgraph: RTL-SDR → WBFM demod → de-emphasis → audio
-                              └── ~/.sdr-fm/  (settings.json + stations.json)
+                              └── ~/.sdr-fm/stations.json
 ```
 
 - The Rust backend opens the RTL-SDR via **SoapySDR** (`driver=rtlsdr`).
@@ -149,9 +141,9 @@ Angular UI  ──invoke──▶  Tauri commands  ──▶  SdrPlayer (Rust)
 ## Project layout
 
 ```
-src/                    Angular frontend (Winamp UI, station CRUD)
+src/                    Angular frontend (Rigonda UI, station CRUD)
 src-tauri/              Rust backend (SDR, DSP, config)
-  src/config/           city presets, settings.json, stations.json
+  src/config/           bundled presets, stations.json persistence
   src/dsp/              FutureSDR WBFM flowgraph
   icons/                App icon set (macOS, Windows, Linux)
 ```

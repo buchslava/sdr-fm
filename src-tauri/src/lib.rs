@@ -5,10 +5,7 @@ mod macos_menu;
 mod macos_spellcheck;
 mod sdr;
 
-use config::{
-    CityInfo, Station, get_city_id, list_cities, load_stations, save_stations,
-    set_city_and_reload,
-};
+use config::{Station, load_stations, save_stations};
 use dsp::ScanProgress;
 use sdr::SdrPlayer;
 use tauri::{AppHandle, Emitter};
@@ -62,21 +59,6 @@ fn set_stations(stations: Vec<Station>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_cities() -> Vec<CityInfo> {
-    list_cities()
-}
-
-#[tauri::command]
-fn get_city() -> String {
-    get_city_id()
-}
-
-#[tauri::command]
-fn set_city(city: String) -> Result<Vec<Station>, String> {
-    set_city_and_reload(&city)
-}
-
-#[tauri::command]
 fn get_audio_devices() -> Result<Vec<String>, String> {
     dsp::list_output_devices()
 }
@@ -96,9 +78,6 @@ pub fn run() {
             scan_fm_band,
             get_stations,
             set_stations,
-            get_cities,
-            get_city,
-            set_city,
             get_audio_devices
         ]);
 

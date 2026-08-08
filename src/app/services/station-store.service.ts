@@ -4,11 +4,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { FmStation } from "../models/fm-station";
 import { mergePreservedLabels } from "../utils/station-label-merge";
 
-export interface CityInfo {
-  id: string;
-  name: string;
-}
-
 function sortByFrequency(stations: FmStation[]): FmStation[] {
   return [...stations].sort((a, b) => a.frequencyKhz - b.frequencyKhz);
 }
@@ -17,8 +12,6 @@ function sortByFrequency(stations: FmStation[]): FmStation[] {
 export class StationStoreService {
   readonly stations = signal<FmStation[]>([]);
   readonly selectedId = signal<string | null>(null);
-  readonly cities = signal<CityInfo[]>([]);
-  readonly cityId = signal("kharkiv");
 
   readonly selectedStation = computed(
     () => this.stations().find((s) => s.id === this.selectedId()) ?? null,
@@ -29,29 +22,13 @@ export class StationStoreService {
   );
 
   async load(): Promise<void> {
-    // Load stations first so missing settings trigger IP detect + persist,
-    // then read the resolved city.
     const stations = await invoke<FmStation[]>("get_stations");
-    const [cities, city] = await Promise.all([
-      invoke<CityInfo[]>("get_cities"),
-      invoke<string>("get_city"),
-    ]);
     this.stations.set(sortByFrequency(stations));
-    this.cities.set(cities);
-    this.cityId.set(city);
     this.ensureSelection();
   }
 
   select(id: string): void {
     this.selectedId.set(id);
-  }
-
-  async setCity(cityId: string): Promise<void> {
-    const stations = await invoke<FmStation[]>("set_city", { city: cityId });
-    this.stations.set(sortByFrequency(stations));
-    this.cityId.set(cityId);
-    this.selectedId.set(null);
-    this.ensureSelection();
   }
 
   async replaceStations(stations: FmStation[]): Promise<void> {
