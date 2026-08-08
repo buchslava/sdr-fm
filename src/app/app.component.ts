@@ -1,6 +1,7 @@
 import {
   Component,
   computed,
+  HostListener,
   inject,
   OnDestroy,
   OnInit,
@@ -17,7 +18,6 @@ import {
 } from "./components/station-form-modal/station-form-modal.component";
 import { FmStation, formatMhz } from "./models/fm-station";
 import { StationStoreService } from "./services/station-store.service";
-import { stationLabel } from "./utils/fm-dial";
 
 interface ScanProgressEvent {
   phase: string;
@@ -43,12 +43,33 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly modalMode = signal<StationFormMode>("add");
   readonly modalStation = signal<FmStation | null>(null);
   readonly scanHits = signal<FmStation[]>([]);
+  readonly cityMenuOpen = signal(false);
 
   readonly statusLine = computed(() => this.error() || this.status());
   readonly crudDisabled = computed(() => this.isPlaying() || this.isScanning());
+  readonly currentCityName = computed(() => {
+    const city = this.store
+      .cities()
+      .find((entry) => entry.id === this.store.cityId());
+    return city?.name ?? "Київ";
+  });
 
   readonly formatMhz = formatMhz;
-  readonly stationLabel = stationLabel;
+
+  @HostListener("document:click")
+  onDocumentClick(): void {
+    this.closeCityMenu();
+  }
+
+  @HostListener("document:keydown.escape")
+  onEscapeKey(): void {
+    this.closeCityMenu();
+  }
+
+  showReadoutName(station: FmStation): boolean {
+    const name = station.name.trim();
+    return name.length > 0 && name !== formatMhz(station.frequencyKhz);
+  }
 
   private unlistenScan: UnlistenFn | null = null;
 
@@ -230,9 +251,24 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  async onCityChange(event: Event): Promise<void> {
-    const select = event.target as HTMLSelectElement;
-    const nextCity = select.value;
+  toggleCityMenu(event: Event): void {
+    event.stopPropagation();
+    if (this.isPlaying() || this.isScanning()) {
+      return;
+    }
+    this.cityMenuOpen.update((open) => !open);
+  }
+
+  closeCityMenu(): void {
+    this.cityMenuOpen.set(false);
+  }
+
+  async selectCity(cityId: string): Promise<void> {
+    this.closeCityMenu();
+    await this.changeCity(cityId);
+  }
+
+  async changeCity(nextCity: string): Promise<void> {
     const previousCity = this.store.cityId();
 
     if (!nextCity || nextCity === previousCity) {
@@ -251,7 +287,6 @@ export class AppComponent implements OnInit, OnDestroy {
     );
 
     if (!confirmed) {
-      select.value = previousCity;
       return;
     }
 
@@ -261,7 +296,6 @@ export class AppComponent implements OnInit, OnDestroy {
       this.scanHits.set([]);
       this.status.set(`Loaded ${cityName} presets.`);
     } catch (err) {
-      select.value = previousCity;
       this.error.set(String(err));
     }
   }

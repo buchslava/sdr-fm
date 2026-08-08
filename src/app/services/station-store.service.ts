@@ -2,6 +2,7 @@ import { Injectable, computed, signal } from "@angular/core";
 import { invoke } from "@tauri-apps/api/core";
 
 import { FmStation } from "../models/fm-station";
+import { mergePreservedLabels } from "../utils/station-label-merge";
 
 export interface CityInfo {
   id: string;
@@ -54,7 +55,8 @@ export class StationStoreService {
   }
 
   async replaceStations(stations: FmStation[]): Promise<void> {
-    const next = sortByFrequency(stations);
+    const merged = mergePreservedLabels(stations, this.stations());
+    const next = sortByFrequency(merged);
     await invoke("set_stations", { stations: next });
     this.stations.set(next);
     this.selectedId.set(null);

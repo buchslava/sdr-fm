@@ -2,8 +2,7 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-height: 0;
-  flex: 1;
+  flex: 0 0 auto;
 }
 
 .dial.disabled {
@@ -12,13 +11,13 @@
 
 .dial-window {
   display: flex;
-  flex: 1;
+  flex: 0 0 auto;
   flex-direction: column;
-  min-height: 0;
-  padding: 8px 12px 10px;
+  padding: 8px 12px 0;
   background: linear-gradient(180deg, #f3ead8 0%, #e6d9c0 100%);
   border: 2px solid #6b5344;
-  border-radius: 4px;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.45),
     inset 0 -2px 4px rgba(0, 0, 0, 0.08);
@@ -37,9 +36,8 @@
 
 .dial-scale {
   display: flex;
-  flex: 1;
+  flex: 0 0 auto;
   flex-direction: column;
-  min-height: 0;
   border: 1px solid #8a735f;
   border-radius: 2px;
   background: linear-gradient(180deg, #faf4e8 0%, #efe3cf 100%);
@@ -183,9 +181,9 @@
 .preset-band {
   --lane-height: 16px;
   position: relative;
-  flex: 1;
-  min-height: 88px;
-  padding: 6px 4px 8px;
+  flex: 0 0 auto;
+  height: calc(var(--lane-count, 5) * var(--lane-height) + 14px);
+  padding: 4px 4px 6px;
   border-top: 1px solid rgba(107, 83, 68, 0.3);
   background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
