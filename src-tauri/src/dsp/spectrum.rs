@@ -5,6 +5,7 @@
 //! filter edges are discarded, and hops are averaged onto a common frequency
 //! grid. That composite PSD is what the detector sees.
 
+use std::cmp::Ordering;
 use std::f32::consts::PI;
 use std::sync::Arc;
 
@@ -27,41 +28,42 @@ pub const DC_BLANK_HZ: f64 = 80_000.0;
 /// Keep the inner 80 % of Nyquist; RTL-SDR analog filters roll off outside that.
 const USABLE_NYQUIST_FRAC: f64 = 0.80;
 
+pub(super) fn cmp_f32(a: f32, b: f32) -> Ordering {
+    a.partial_cmp(&b).unwrap_or(Ordering::Equal)
+}
+
 pub struct SpectrumEngine {
     fft: Arc<dyn Fft<f32>>,
-    fft_size: usize,
     window: Vec<f32>,
     spec_scratch: Vec<Complex<f32>>,
     fft_buf: Vec<Complex<f32>>,
 }
 
 impl SpectrumEngine {
-    pub fn new(fft_size: usize) -> Self {
+    pub fn new() -> Self {
         let mut planner = FftPlanner::<f32>::new();
-        let fft = planner.plan_fft_forward(fft_size);
+        let fft = planner.plan_fft_forward(FFT_SIZE);
         let scratch_len = fft.get_inplace_scratch_len();
         Self {
             spec_scratch: vec![Complex::new(0.0, 0.0); scratch_len],
             fft,
-            fft_size,
-            window: hann(fft_size),
-            fft_buf: vec![Complex::new(0.0, 0.0); fft_size],
+            window: hann(FFT_SIZE),
+            fft_buf: vec![Complex::new(0.0, 0.0); FFT_SIZE],
         }
     }
 
     /// Welch PSD, native FFT order (bin 0 = DC / LO). Linear power, arbitrary scale.
     pub fn welch_power(&mut self, iq: &[Complex32]) -> Vec<f64> {
-        let n = self.fft_size;
+        let n = self.fft.len();
         let hop = n / 2;
         let mut acc = vec![0.0f64; n];
         let mut count = 0usize;
         let mut offset = 0usize;
 
         while offset + n <= iq.len() {
-            for k in 0..n {
-                let s = iq[offset + k];
-                let w = self.window[k];
-                self.fft_buf[k] = Complex::new(s.re * w, s.im * w);
+            let frame = &iq[offset..offset + n];
+            for ((slot, sample), &w) in self.fft_buf.iter_mut().zip(frame).zip(&self.window) {
+                *slot = Complex::new(sample.re * w, sample.im * w);
             }
             self.fft
                 .process_with_scratch(&mut self.fft_buf, &mut self.spec_scratch);
@@ -91,8 +93,7 @@ pub fn usable_half_hz(sample_rate: u32) -> f64 {
 /// LO step: large enough to clear the DC hole of the previous hop, small enough
 /// to stay inside the usable sideband (`DC_BLANK < step ≤ usable_half`).
 pub fn hop_step_hz(usable_half: f64) -> f64 {
-    let step = usable_half * 0.73;
-    step.clamp(DC_BLANK_HZ * 2.0, usable_half)
+    (usable_half * 0.73).clamp(DC_BLANK_HZ * 2.0, usable_half)
 }
 
 pub fn hop_lo_hz(start_hz: f64, end_hz: f64, usable_half: f64, step: f64) -> Vec<f64> {
@@ -102,19 +103,17 @@ pub fn hop_lo_hz(start_hz: f64, end_hz: f64, usable_half: f64, step: f64) -> Vec
         return vec![(start_hz + end_hz) * 0.5];
     }
 
-    let mut los = Vec::new();
+    let estimate = ((last - first) / step).ceil() as usize + 2;
+    let mut los = Vec::with_capacity(estimate);
     let mut lo = first;
     while lo < last - 1.0 {
         los.push(lo);
         lo += step;
     }
-    match los.last() {
-        Some(&prev) if (last - prev).abs() < step * 0.25 => {
-            if let Some(slot) = los.last_mut() {
-                *slot = last;
-            }
-        }
-        _ => los.push(last),
+    match los.last_mut() {
+        Some(prev) if (last - *prev).abs() < step * 0.25 => *prev = last,
+        Some(_) => los.push(last),
+        None => los.push(last),
     }
     los
 }
@@ -190,8 +189,7 @@ impl SpectrumAccumulator {
     }
 
     pub fn finish(self) -> BandSpectrum {
-        let n = self.power.len();
-        let mut power_db = vec![f32::NEG_INFINITY; n];
+        let mut power_db = vec![f32::NEG_INFINITY; self.power.len()];
         for ((acc, weight), out) in self.power.iter().zip(&self.weight).zip(power_db.iter_mut()) {
             if *weight > 0.0 {
                 *out = (10.0 * (*acc / *weight).log10()) as f32;
@@ -208,26 +206,28 @@ impl SpectrumAccumulator {
 
 fn fill_gaps(power_db: &mut [f32]) {
     let n = power_db.len();
-    let mut last = None;
+    let mut last: Option<(usize, f32)> = None;
     for i in 0..n {
-        if power_db[i].is_finite() {
-            if let Some((j, v)) = last {
-                if i > j + 1 {
-                    let span = (i - j) as f32;
-                    for k in (j + 1)..i {
-                        let t = (k - j) as f32 / span;
-                        power_db[k] = v + t * (power_db[i] - v);
-                    }
+        let value = power_db[i];
+        if !value.is_finite() {
+            continue;
+        }
+        if let Some((j, v)) = last {
+            if i > j + 1 {
+                let span = (i - j) as f32;
+                let (head, _) = power_db.split_at_mut(i);
+                for (k, slot) in head.iter_mut().enumerate().skip(j + 1) {
+                    let t = (k - j) as f32 / span;
+                    *slot = v + t * (value - v);
                 }
             }
-            last = Some((i, power_db[i]));
         }
+        last = Some((i, value));
     }
+
     let finite: Vec<f32> = power_db.iter().copied().filter(|v| v.is_finite()).collect();
     if finite.is_empty() {
-        for v in power_db.iter_mut() {
-            *v = -200.0;
-        }
+        power_db.fill(-200.0);
         return;
     }
     let coverage = finite.len() as f32 / n as f32;
@@ -248,7 +248,7 @@ pub fn percentile(values: &[f32], pct: f32) -> f32 {
         return 0.0;
     }
     let mut sorted = values.to_vec();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.sort_by(|a, b| cmp_f32(*a, *b));
     let idx = ((pct.clamp(0.0, 1.0) * (sorted.len() as f32 - 1.0)).round() as usize)
         .min(sorted.len() - 1);
     sorted[idx]
@@ -267,19 +267,12 @@ impl BandSpectrum {
     }
 
     pub fn index_of(&self, freq_hz: f64) -> Option<usize> {
-        if self.power_db.is_empty() {
-            return None;
-        }
         let idx = ((freq_hz - self.start_hz) / self.bin_hz).round();
         if idx < 0.0 {
             return None;
         }
         let idx = idx as usize;
-        if idx < self.power_db.len() {
-            Some(idx)
-        } else {
-            None
-        }
+        (idx < self.power_db.len()).then_some(idx)
     }
 }
 
@@ -337,14 +330,14 @@ mod tests {
             let phase = 2.0 * PI * tone_hz * i as f32 / fs as f32;
             iq.push(Complex32::new(phase.cos(), phase.sin()));
         }
-        let mut engine = SpectrumEngine::new(FFT_SIZE);
+        let mut engine = SpectrumEngine::new();
         let psd = engine.welch_power(&iq);
         let bin_hz = fs as f64 / FFT_SIZE as f64;
         let expected = (tone_hz as f64 / bin_hz).round() as usize;
         let peak = psd
             .iter()
             .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(Ordering::Equal))
             .map(|(i, _)| i)
             .unwrap();
         assert!(
@@ -369,9 +362,19 @@ mod tests {
             .power_db
             .iter()
             .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .max_by(|a, b| cmp_f32(*a.1, *b.1))
             .map(|(i, _)| i)
             .unwrap();
         assert!((peak as i32 - idx as i32).abs() <= 1);
+    }
+
+    #[test]
+    fn freq_hz_round_trips_with_index_of() {
+        let spec = BandSpectrum {
+            start_hz: BAND_START_HZ,
+            bin_hz: GRID_HZ,
+            power_db: vec![0.0; 16],
+        };
+        assert_eq!(spec.index_of(spec.freq_hz(7)), Some(7));
     }
 }

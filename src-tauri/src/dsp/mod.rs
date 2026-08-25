@@ -1,7 +1,6 @@
 mod command;
 mod detect;
 mod flowgraph;
-mod rds;
 mod scan;
 mod silence;
 mod spectrum;
@@ -32,10 +31,10 @@ const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = DEFAULT_SAMPLE_RATE;
 
 /// True if `rate` is accepted by the RTL2832 resampler (librtlsdr rules).
 pub fn is_rtlsdr_valid_sample_rate(rate: u32) -> bool {
-    if rate < RTL_SDR_MIN_SAMPLE_RATE || rate > RTL_SDR_MAX_SAMPLE_RATE {
+    if !(RTL_SDR_MIN_SAMPLE_RATE..=RTL_SDR_MAX_SAMPLE_RATE).contains(&rate) {
         return false;
     }
-    !(rate > 300_000 && rate <= 900_000)
+    !(300_000 < rate && rate <= 900_000)
 }
 
 fn nearest_preferred_rate(requested: u32) -> u32 {

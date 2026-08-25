@@ -1,3 +1,4 @@
+use std::f32::consts::PI;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -70,7 +71,7 @@ fn run_pipeline(
     let wbfm_decim_block = FirBuilder::decimating::<Complex32, Complex32, Vec<f32>>(wbfm_decim);
 
     let mut last_wbfm = Complex32::new(0.0, 0.0);
-    let wbfm_gain = (wbfm_rate as f32) / (2.0 * std::f32::consts::PI * 75_000.0);
+    let wbfm_gain = (wbfm_rate as f32) / (2.0 * PI * 75_000.0);
     let wbfm_demod = Apply::new(move |c: &Complex32| -> f32 {
         let phase = (c * last_wbfm.conj()).arg();
         last_wbfm = *c;

@@ -74,25 +74,12 @@ pub fn ensure_config_dir() -> Option<PathBuf> {
 }
 
 pub fn load_stations() -> Vec<Station> {
-    let path = match stations_path() {
-        Some(p) => p,
-        None => return bundled_stations(),
-    };
-
-    let Ok(data) = fs::read_to_string(&path) else {
-        return bundled_stations();
-    };
-
-    let parsed: StationsFile = match serde_json::from_str(&data) {
-        Ok(file) => file,
-        Err(_) => return bundled_stations(),
-    };
-
-    if parsed.stations.is_empty() {
-        return bundled_stations();
-    }
-
-    sorted_stations(parsed.stations)
+    stations_path()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|data| serde_json::from_str::<StationsFile>(&data).ok())
+        .filter(|file| !file.stations.is_empty())
+        .map(|file| sorted_stations(file.stations))
+        .unwrap_or_else(bundled_stations)
 }
 
 pub fn validate_stations(stations: &[Station]) -> Result<(), String> {

@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::f32::consts::PI;
+use std::ops::{Deref, DerefMut};
 use std::time::{Duration, Instant};
 
 use desperado::dsp::{decimator::Decimator, rotate::Rotate, DspBlock};
@@ -13,19 +14,20 @@ use fmradio::fm::PhaseExtractor;
 use fmradio::rds::{RdsDecoder, RdsResamplerCustom, StereoDecoderPLL};
 use futuresdr::num_complex::Complex32;
 use futuresdr::seify::{Device, Direction, GenericDevice, RxStreamer};
+use num_complex::Complex;
 use serde::Serialize;
 
 use crate::config::Station;
 
-use super::detect::{detect_fm_channels, DetectedChannel};
+use super::detect::detect_fm_channels;
 use super::spectrum::{
-    hop_lo_hz, hop_step_hz, usable_half_hz, SpectrumAccumulator, SpectrumEngine, BAND_END_HZ,
-    BAND_START_HZ, FFT_SIZE, GRID_HZ, PREFERRED_SAMPLE_RATES,
+    cmp_f32, hop_lo_hz, hop_step_hz, usable_half_hz, SpectrumAccumulator, SpectrumEngine,
+    BAND_END_HZ, BAND_START_HZ, FFT_SIZE, GRID_HZ, PREFERRED_SAMPLE_RATES,
 };
 use super::{is_rtlsdr_valid_sample_rate, open_device};
 
 const MAX_RDS_PEAKS: usize = 15;
-const OFFSET_FREQ: i32 = 200_000;
+const OFFSET_FREQ_HZ: u64 = 200_000;
 const FM_BANDWIDTH: f32 = 256_000.0;
 const DEFAULT_GAIN_DB: f64 = 40.0;
 const BUF_LEN: usize = 16_384;
@@ -37,14 +39,69 @@ const SPECTRUM_DWELL: Duration = Duration::from_millis(150);
 const RDS_DWELL: Duration = Duration::from_millis(2500);
 const SCAN_DEADLINE: Duration = Duration::from_secs(150);
 const MAX_IQ_SAMPLES: usize = 400_000;
+const RDS_TARGET_RATE: f32 = 171_000.0;
+const RELEASE_SLEEP: Duration = Duration::from_millis(400);
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScanPhase {
+    Spectrum,
+    Rds,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanProgress {
-    pub phase: String,
+    pub phase: ScanPhase,
     pub current: u32,
     pub total: u32,
     pub mhz: f64,
+}
+
+impl ScanProgress {
+    fn new(phase: ScanPhase, current: u32, total: u32, hz: f64) -> Self {
+        Self {
+            phase,
+            current,
+            total: total.max(1),
+            mhz: hz / 1_000_000.0,
+        }
+    }
+}
+
+struct RxSession {
+    rx: Box<dyn RxStreamer>,
+}
+
+impl RxSession {
+    fn open(dev: &Device<GenericDevice>) -> Result<Self, String> {
+        let mut rx = dev
+            .rx_streamer(&[0])
+            .map_err(|e| format!("Failed to create RX streamer: {e}"))?;
+        rx.activate()
+            .map_err(|e| format!("Failed to activate RX: {e}"))?;
+        Ok(Self { rx })
+    }
+}
+
+impl Drop for RxSession {
+    fn drop(&mut self) {
+        let _ = self.rx.deactivate();
+    }
+}
+
+impl Deref for RxSession {
+    type Target = dyn RxStreamer;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.rx
+    }
+}
+
+impl DerefMut for RxSession {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut *self.rx
+    }
 }
 
 struct RdsDsp {
@@ -52,28 +109,28 @@ struct RdsDsp {
     decimator: Decimator,
     phase_extractor: PhaseExtractor,
     stereo: StereoDecoderPLL,
+    mix_buf: Vec<Complex<f32>>,
     mpx_rate: f32,
-    offset_freq: i32,
     sample_rate: u32,
 }
 
 impl RdsDsp {
-    fn new(sample_rate: u32, offset_freq: i32) -> Self {
+    fn new(sample_rate: u32) -> Self {
         let factor = (sample_rate as f32 / FM_BANDWIDTH).round().max(1.0) as usize;
         let mpx_rate = sample_rate as f32 / factor as f32;
         Self {
-            rotate: Rotate::new(-2.0 * PI * offset_freq as f32 / sample_rate as f32),
+            rotate: rotate_for(sample_rate),
             decimator: Decimator::new(factor),
             phase_extractor: PhaseExtractor::new(),
             stereo: StereoDecoderPLL::new(mpx_rate),
+            mix_buf: Vec::new(),
             mpx_rate,
-            offset_freq,
             sample_rate,
         }
     }
 
     fn reset_after_tune(&mut self) {
-        self.rotate = Rotate::new(-2.0 * PI * self.offset_freq as f32 / self.sample_rate as f32);
+        self.rotate = rotate_for(self.sample_rate);
         self.decimator.reset();
         self.phase_extractor.reset();
         self.stereo = StereoDecoderPLL::new(self.mpx_rate);
@@ -85,11 +142,10 @@ impl RdsDsp {
         rds_resampler: &mut RdsResamplerCustom,
         rds: &mut RdsDecoder,
     ) {
-        let complex: Vec<num_complex::Complex<f32>> = chunk
-            .iter()
-            .map(|c| num_complex::Complex::new(c.re, c.im))
-            .collect();
-        let shifted = self.rotate.process(&complex);
+        self.mix_buf.clear();
+        self.mix_buf
+            .extend(chunk.iter().map(|c| Complex::new(c.re, c.im)));
+        let shifted = self.rotate.process(&self.mix_buf);
         let decimated = self.decimator.process(&shifted);
         let phase = self.phase_extractor.process(&decimated);
         let (_, _, pilot_phases) = self.stereo.process(&phase);
@@ -98,26 +154,25 @@ impl RdsDsp {
     }
 }
 
-fn tuning_lo_hz(air_hz: u64, offset_freq_hz: i32) -> f64 {
-    if offset_freq_hz >= 0 {
-        air_hz.saturating_sub(offset_freq_hz as u64) as f64
-    } else {
-        air_hz.saturating_add((-offset_freq_hz) as u64) as f64
-    }
+fn rotate_for(sample_rate: u32) -> Rotate {
+    Rotate::new(-2.0 * PI * OFFSET_FREQ_HZ as f32 / sample_rate as f32)
 }
 
-fn read_some(rx: &mut Box<dyn RxStreamer>, buf: &mut [Complex32]) -> Option<usize> {
+fn tuning_lo_hz(air_hz: u64) -> f64 {
+    air_hz.saturating_sub(OFFSET_FREQ_HZ) as f64
+}
+
+fn read_some(rx: &mut dyn RxStreamer, buf: &mut [Complex32]) -> Option<usize> {
     for _ in 0..MAX_READ_ATTEMPTS {
         match rx.read(&mut [&mut buf[..]], READ_TIMEOUT_US) {
             Ok(n) if n > 0 => return Some(n),
-            Ok(_) => std::thread::sleep(Duration::from_millis(2)),
-            Err(_) => std::thread::sleep(Duration::from_millis(2)),
+            _ => std::thread::sleep(Duration::from_millis(2)),
         }
     }
     None
 }
 
-fn discard_reads(rx: &mut Box<dyn RxStreamer>, buf: &mut [Complex32], count: u32) {
+fn discard_reads(rx: &mut dyn RxStreamer, buf: &mut [Complex32], count: u32) {
     for _ in 0..count {
         let _ = read_some(rx, buf);
     }
@@ -125,7 +180,7 @@ fn discard_reads(rx: &mut Box<dyn RxStreamer>, buf: &mut [Complex32], count: u32
 
 fn tune_lo(
     dev: &Device<GenericDevice>,
-    rx: &mut Box<dyn RxStreamer>,
+    rx: &mut dyn RxStreamer,
     buf: &mut [Complex32],
     lo_hz: f64,
 ) -> Result<(), String> {
@@ -140,11 +195,13 @@ fn tune_lo(
 }
 
 fn collect_iq(
-    rx: &mut Box<dyn RxStreamer>,
+    rx: &mut dyn RxStreamer,
     buf: &mut [Complex32],
     dwell: Duration,
+    sample_rate: u32,
 ) -> Vec<Complex32> {
-    let mut iq = Vec::with_capacity(MAX_IQ_SAMPLES.min((dwell.as_secs_f64() * 2.5e6) as usize));
+    let expected = ((dwell.as_secs_f64() * f64::from(sample_rate)) as usize).min(MAX_IQ_SAMPLES);
+    let mut iq = Vec::with_capacity(expected);
     let deadline = Instant::now() + dwell;
     while Instant::now() < deadline && iq.len() < MAX_IQ_SAMPLES {
         let Some(n) = read_some(rx, buf) else {
@@ -157,20 +214,19 @@ fn collect_iq(
 
 fn try_rds_name(
     dev: &Device<GenericDevice>,
-    rx: &mut Box<dyn RxStreamer>,
+    rx: &mut dyn RxStreamer,
     buf: &mut [Complex32],
     dsp: &mut RdsDsp,
     air_hz: u64,
     dwell: Duration,
 ) -> String {
-    if tune_lo(dev, rx, buf, tuning_lo_hz(air_hz, OFFSET_FREQ)).is_err() {
+    if tune_lo(dev, rx, buf, tuning_lo_hz(air_hz)).is_err() {
         return String::new();
     }
     dsp.reset_after_tune();
 
-    let rds_target_rate = 171_000.0_f32;
-    let mut rds_resampler = RdsResamplerCustom::new(dsp.mpx_rate, rds_target_rate);
-    let mut rds = RdsDecoder::new(rds_target_rate, false);
+    let mut rds_resampler = RdsResamplerCustom::new(dsp.mpx_rate, RDS_TARGET_RATE);
+    let mut rds = RdsDecoder::new(RDS_TARGET_RATE, false);
     rds.set_print_json_output(false);
 
     let deadline = Instant::now() + dwell;
@@ -222,38 +278,33 @@ where
     let dev = open_device()?;
     let sample_rate = configure_device(&dev)?;
 
-    let mut rx = dev
-        .rx_streamer(&[0])
-        .map_err(|e| format!("Failed to create RX streamer: {e}"))?;
-    rx.activate()
-        .map_err(|e| format!("Failed to activate RX: {e}"))?;
-
+    let mut rx = RxSession::open(&dev)?;
     let mut buf = vec![Complex32::new(0.0, 0.0); BUF_LEN];
-    discard_reads(&mut rx, &mut buf, SETTLE_READS);
+    discard_reads(&mut *rx, &mut buf, SETTLE_READS);
 
     let usable_half = usable_half_hz(sample_rate);
     let step = hop_step_hz(usable_half);
     let hops = hop_lo_hz(BAND_START_HZ, BAND_END_HZ, usable_half, step);
     let total_hops = hops.len() as u32;
 
-    let mut engine = SpectrumEngine::new(FFT_SIZE);
+    let mut engine = SpectrumEngine::new();
     let mut acc = SpectrumAccumulator::new(BAND_START_HZ, BAND_END_HZ, GRID_HZ);
 
     for (i, &lo_hz) in hops.iter().enumerate() {
         if started.elapsed() > SCAN_DEADLINE {
             break;
         }
-        on_progress(ScanProgress {
-            phase: "spectrum".into(),
-            current: (i as u32) + 1,
-            total: total_hops.max(1),
-            mhz: lo_hz / 1_000_000.0,
-        });
+        on_progress(ScanProgress::new(
+            ScanPhase::Spectrum,
+            i as u32 + 1,
+            total_hops,
+            lo_hz,
+        ));
 
-        if tune_lo(&dev, &mut rx, &mut buf, lo_hz).is_err() {
+        if tune_lo(&dev, &mut *rx, &mut buf, lo_hz).is_err() {
             continue;
         }
-        let iq = collect_iq(&mut rx, &mut buf, SPECTRUM_DWELL);
+        let iq = collect_iq(&mut *rx, &mut buf, SPECTRUM_DWELL, sample_rate);
         if iq.len() < FFT_SIZE {
             continue;
         }
@@ -282,35 +333,31 @@ where
     }
 
     if detected.is_empty() {
-        let _ = rx.deactivate();
         return Err("No FM stations found. Try another antenna position or higher gain.".into());
     }
 
-    let mut by_score = detected.clone();
-    by_score.sort_by(|a, b| {
-        b.snr_db
-            .partial_cmp(&a.snr_db)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    by_score.truncate(MAX_RDS_PEAKS);
+    let mut rds_order: Vec<usize> = (0..detected.len()).collect();
+    rds_order.sort_by(|&a, &b| cmp_f32(detected[b].snr_db, detected[a].snr_db));
+    rds_order.truncate(MAX_RDS_PEAKS);
 
-    let mut dsp = RdsDsp::new(sample_rate, OFFSET_FREQ);
-    let mut name_by_freq: HashMap<u32, String> = HashMap::with_capacity(by_score.len());
-    let total_rds = by_score.len() as u32;
+    let mut dsp = RdsDsp::new(sample_rate);
+    let mut name_by_freq = HashMap::with_capacity(rds_order.len());
+    let total_rds = rds_order.len() as u32;
 
-    for (i, ch) in by_score.iter().enumerate() {
+    for (i, &idx) in rds_order.iter().enumerate() {
         if started.elapsed() > SCAN_DEADLINE {
             break;
         }
-        on_progress(ScanProgress {
-            phase: "rds".into(),
-            current: (i as u32) + 1,
-            total: total_rds.max(1),
-            mhz: ch.frequency_khz as f64 / 1_000.0,
-        });
+        let ch = detected[idx];
+        on_progress(ScanProgress::new(
+            ScanPhase::Rds,
+            i as u32 + 1,
+            total_rds,
+            ch.frequency_khz as f64 * 1_000.0,
+        ));
         let name = try_rds_name(
             &dev,
-            &mut rx,
+            &mut *rx,
             &mut buf,
             &mut dsp,
             ch.frequency_khz as u64 * 1_000,
@@ -319,17 +366,16 @@ where
         name_by_freq.insert(ch.frequency_khz, name);
     }
 
-    let _ = rx.deactivate();
     drop(rx);
     drop(dev);
-    std::thread::sleep(Duration::from_millis(400));
+    std::thread::sleep(RELEASE_SLEEP);
 
     let mut stations: Vec<Station> = detected
         .into_iter()
-        .map(|DetectedChannel { frequency_khz, .. }| Station {
-            id: format!("scan-{frequency_khz}"),
-            name: name_by_freq.remove(&frequency_khz).unwrap_or_default(),
-            frequency_khz,
+        .map(|ch| Station {
+            id: format!("scan-{}", ch.frequency_khz),
+            name: name_by_freq.remove(&ch.frequency_khz).unwrap_or_default(),
+            frequency_khz: ch.frequency_khz,
         })
         .collect();
     stations.sort_by_key(|s| s.frequency_khz);

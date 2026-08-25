@@ -12,12 +12,13 @@
 //!    noise (Neyman–Pearson for unknown amplitude in additive noise).
 //! 3. Occupancy / equivalent rectangular bandwidth to reject LO birdies
 //!    and CW spurs (a haystack is wide; a spike is not).
-//! 4. Local maximum among channels that already look like FM (occupancy +
-//!    bandwidth), so a rejected spur cannot mask a real haystack.
+//! 4. Connected occupancy blobs: adjacent eligible raster channels are one
+//!    haystack. Keep the highest-SNR channel in each blob. A deep SNR valley
+//!    (≥ 6 dB) splits two real transmitters that happen to touch.
 //!
 //! This is the discrete version of “click the centre of the haystack in SDR++”.
 
-use super::spectrum::{percentile, BandSpectrum, GRID_HZ};
+use super::spectrum::{cmp_f32, percentile, BandSpectrum, GRID_HZ};
 
 /// ITU-R BS.450 Region 1 channel step.
 pub const RASTER_KHZ: u32 = 100;
@@ -39,11 +40,13 @@ const MIN_OCCUPANCY: f32 = 0.30;
 const OCCUPANCY_BIN_DB: f32 = 3.0;
 /// Equivalent rectangular bandwidth of excess power inside the test cell.
 const MIN_BEQ_HZ: f32 = 55_000.0;
-/// Merge 100 kHz raster twins; keep 200 kHz neighbours.
-const MIN_SEP_KHZ: u32 = 150;
+/// One WBFM occupancy is ~180 kHz, so 200 kHz raster twins are the same station.
+const MIN_SEP_KHZ: u32 = 250;
+/// Split a blob only when two peaks are separated by a real valley, not a stitch dip.
+const VALLEY_DB: f32 = 6.0;
 const MAX_CHANNELS: usize = 50;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DetectedChannel {
     pub frequency_khz: u32,
     pub snr_db: f32,
@@ -51,64 +54,125 @@ pub struct DetectedChannel {
     pub bandwidth_hz: f32,
 }
 
-#[derive(Debug, Clone)]
-struct ChannelStat {
-    frequency_khz: u32,
-    snr_db: f32,
-    occupancy: f32,
-    bandwidth_hz: f32,
-}
-
-pub fn detect_fm_channels(spectrum: &BandSpectrum) -> Vec<DetectedChannel> {
-    let channels: Vec<u32> = (BAND_START_KHZ..=BAND_END_KHZ)
-        .step_by(RASTER_KHZ as usize)
-        .collect();
-    if channels.is_empty() {
-        return Vec::new();
-    }
-
-    let mut stats: Vec<ChannelStat> = Vec::with_capacity(channels.len());
-    for &khz in &channels {
-        stats.push(measure_channel(spectrum, khz));
-    }
-
-    let mut eligible = vec![false; stats.len()];
-    for (i, s) in stats.iter().enumerate() {
-        eligible[i] = s.snr_db >= SNR_THRESHOLD_DB
-            && s.occupancy >= MIN_OCCUPANCY
-            && s.bandwidth_hz >= MIN_BEQ_HZ;
-    }
-
-    let mut peaks: Vec<DetectedChannel> = Vec::new();
-    for i in 0..stats.len() {
-        if !eligible[i] {
-            continue;
-        }
-        let s = &stats[i];
-        let left_ok = i == 0 || !eligible[i - 1] || s.snr_db >= stats[i - 1].snr_db;
-        let right_ok = i + 1 >= stats.len() || !eligible[i + 1] || s.snr_db >= stats[i + 1].snr_db;
-        if left_ok && right_ok {
-            peaks.push(DetectedChannel {
-                frequency_khz: s.frequency_khz,
-                snr_db: s.snr_db,
-                occupancy: s.occupancy,
-                bandwidth_hz: s.bandwidth_hz,
-            });
-        }
-    }
-
-    merge_spaced(peaks, MIN_SEP_KHZ, MAX_CHANNELS)
-}
-
-fn measure_channel(spectrum: &BandSpectrum, frequency_khz: u32) -> ChannelStat {
-    let center_hz = frequency_khz as f64 * 1_000.0;
-    let Some(center_idx) = spectrum.index_of(center_hz) else {
-        return ChannelStat {
+impl DetectedChannel {
+    fn rejected(frequency_khz: u32) -> Self {
+        Self {
             frequency_khz,
             snr_db: f32::NEG_INFINITY,
             occupancy: 0.0,
             bandwidth_hz: 0.0,
+        }
+    }
+
+    fn is_eligible(self) -> bool {
+        self.snr_db >= SNR_THRESHOLD_DB
+            && self.occupancy >= MIN_OCCUPANCY
+            && self.bandwidth_hz >= MIN_BEQ_HZ
+    }
+
+    fn quality_cmp(self, other: Self) -> std::cmp::Ordering {
+        cmp_f32(self.snr_db, other.snr_db).then_with(|| cmp_f32(self.occupancy, other.occupancy))
+    }
+}
+
+pub fn detect_fm_channels(spectrum: &BandSpectrum) -> Vec<DetectedChannel> {
+    let stats: Vec<DetectedChannel> = (BAND_START_KHZ..=BAND_END_KHZ)
+        .step_by(RASTER_KHZ as usize)
+        .map(|khz| measure_channel(spectrum, khz))
+        .collect();
+    let eligible: Vec<bool> = stats
+        .iter()
+        .copied()
+        .map(DetectedChannel::is_eligible)
+        .collect();
+    let peaks = best_per_blob(&stats, &eligible);
+    merge_spaced(peaks, MIN_SEP_KHZ, MAX_CHANNELS)
+}
+
+fn best_per_blob(stats: &[DetectedChannel], eligible: &[bool]) -> Vec<DetectedChannel> {
+    let mut peaks = Vec::new();
+    let mut i = 0;
+    while i < stats.len() {
+        if !eligible[i] {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < stats.len() && eligible[i] {
+            i += 1;
+        }
+        for (lo, hi) in split_valleys(stats, start, i) {
+            if let Some(best) = argmax_quality(stats, lo, hi) {
+                peaks.push(stats[best]);
+            }
+        }
+    }
+    peaks
+}
+
+fn split_valleys(stats: &[DetectedChannel], start: usize, end: usize) -> Vec<(usize, usize)> {
+    if end <= start + 2 {
+        return vec![(start, end)];
+    }
+
+    let mut maxima = Vec::new();
+    for i in start..end {
+        let left = if i == start {
+            f32::NEG_INFINITY
+        } else {
+            stats[i - 1].snr_db
         };
+        let right = if i + 1 == end {
+            f32::NEG_INFINITY
+        } else {
+            stats[i + 1].snr_db
+        };
+        if stats[i].snr_db >= left && stats[i].snr_db >= right {
+            maxima.push(i);
+        }
+    }
+    if maxima.len() <= 1 {
+        return vec![(start, end)];
+    }
+
+    let mut segments = Vec::new();
+    let mut seg_start = start;
+    for pair in maxima.windows(2) {
+        let left_peak = pair[0];
+        let right_peak = pair[1];
+        let Some((valley, valley_snr)) = (left_peak..=right_peak)
+            .map(|i| (i, stats[i].snr_db))
+            .min_by(|a, b| cmp_f32(a.1, b.1))
+        else {
+            continue;
+        };
+        let weaker = stats[left_peak].snr_db.min(stats[right_peak].snr_db);
+        if weaker - valley_snr >= VALLEY_DB && valley > seg_start && valley + 1 < end {
+            segments.push((seg_start, valley));
+            seg_start = valley + 1;
+        }
+    }
+    if seg_start < end {
+        segments.push((seg_start, end));
+    }
+    if segments.is_empty() {
+        vec![(start, end)]
+    } else {
+        segments
+    }
+}
+
+fn argmax_quality(stats: &[DetectedChannel], start: usize, end: usize) -> Option<usize> {
+    (start..end).max_by(|&a, &b| stats[a].quality_cmp(stats[b]))
+}
+
+fn measure_channel(spectrum: &BandSpectrum, frequency_khz: u32) -> DetectedChannel {
+    let center_hz = frequency_khz as f64 * 1_000.0;
+    let Some(center_idx) = spectrum.index_of(center_hz) else {
+        return DetectedChannel::rejected(frequency_khz);
+    };
+    if (spectrum.freq_hz(center_idx) - center_hz).abs() > spectrum.bin_hz {
+        return DetectedChannel::rejected(frequency_khz);
     };
 
     let test_radius = bins_for(TEST_HALF_HZ);
@@ -118,12 +182,7 @@ fn measure_channel(spectrum: &BandSpectrum, frequency_khz: u32) -> ChannelStat {
     let lo = center_idx.saturating_sub(test_radius);
     let hi = (center_idx + test_radius + 1).min(spectrum.power_db.len());
     if hi <= lo {
-        return ChannelStat {
-            frequency_khz,
-            snr_db: f32::NEG_INFINITY,
-            occupancy: 0.0,
-            bandwidth_hz: 0.0,
-        };
+        return DetectedChannel::rejected(frequency_khz);
     }
 
     let test = &spectrum.power_db[lo..hi];
@@ -153,7 +212,7 @@ fn measure_channel(spectrum: &BandSpectrum, frequency_khz: u32) -> ChannelStat {
         0.0
     };
 
-    ChannelStat {
+    DetectedChannel {
         frequency_khz,
         snr_db,
         occupancy,
@@ -192,17 +251,13 @@ fn merge_spaced(
     min_sep_khz: u32,
     max_peaks: usize,
 ) -> Vec<DetectedChannel> {
-    peaks.sort_by(|a, b| {
-        b.snr_db
-            .partial_cmp(&a.snr_db)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    peaks.sort_by(|a, b| b.quality_cmp(*a));
 
-    let mut selected: Vec<DetectedChannel> = Vec::new();
+    let mut selected = Vec::with_capacity(peaks.len().min(max_peaks));
     for peak in peaks {
         if selected
             .iter()
-            .any(|s| s.frequency_khz.abs_diff(peak.frequency_khz) < min_sep_khz)
+            .any(|s: &DetectedChannel| s.frequency_khz.abs_diff(peak.frequency_khz) < min_sep_khz)
         {
             continue;
         }
@@ -232,8 +287,10 @@ mod tests {
     fn paint_haystack(spec: &mut BandSpectrum, center_hz: f64, peak_db: f32, floor_db: f32) {
         let half_top = 60_000.0;
         let half_bot = 100_000.0;
-        for i in 0..spec.power_db.len() {
-            let f = spec.freq_hz(i);
+        let start = spec.start_hz;
+        let step = spec.bin_hz;
+        for (i, bin) in spec.power_db.iter_mut().enumerate() {
+            let f = start + i as f64 * step;
             let d = (f - center_hz).abs();
             let excess = if d <= half_top {
                 peak_db - floor_db
@@ -243,24 +300,37 @@ mod tests {
                 let t = ((half_bot - d) / (half_bot - half_top)) as f32;
                 (peak_db - floor_db) * t
             };
-            let v = floor_db + excess;
-            if v > spec.power_db[i] {
-                spec.power_db[i] = v;
-            }
+            *bin = bin.max(floor_db + excess);
         }
     }
 
     fn paint_spur(spec: &mut BandSpectrum, center_hz: f64, peak_db: f32, width_hz: f64) {
-        for i in 0..spec.power_db.len() {
-            let f = spec.freq_hz(i);
+        let start = spec.start_hz;
+        let step = spec.bin_hz;
+        for (i, bin) in spec.power_db.iter_mut().enumerate() {
+            let f = start + i as f64 * step;
             if (f - center_hz).abs() <= width_hz * 0.5 {
-                spec.power_db[i] = spec.power_db[i].max(peak_db);
+                *bin = bin.max(peak_db);
             }
         }
     }
 
     fn freqs(hits: &[DetectedChannel]) -> Vec<u32> {
         hits.iter().map(|h| h.frequency_khz).collect()
+    }
+
+    fn channel(
+        frequency_khz: u32,
+        snr_db: f32,
+        occupancy: f32,
+        bandwidth_hz: f32,
+    ) -> DetectedChannel {
+        DetectedChannel {
+            frequency_khz,
+            snr_db,
+            occupancy,
+            bandwidth_hz,
+        }
     }
 
     #[test]
@@ -289,24 +359,21 @@ mod tests {
         let mut spec = empty_floor(-80.0);
         paint_haystack(&mut spec, 101_500_000.0, -50.0, -80.0);
         paint_spur(&mut spec, 101_350_000.0, -35.0, 8_000.0);
-        let hits = detect_fm_channels(&spec);
-        assert_eq!(freqs(&hits), vec![101_500]);
+        assert_eq!(freqs(&detect_fm_channels(&spec)), vec![101_500]);
     }
 
     #[test]
     fn one_haystack_is_one_channel() {
         let mut spec = empty_floor(-80.0);
         paint_haystack(&mut spec, 105_000_000.0, -58.0, -80.0);
-        let hits = detect_fm_channels(&spec);
-        assert_eq!(freqs(&hits), vec![105_000]);
+        assert_eq!(freqs(&detect_fm_channels(&spec)), vec![105_000]);
     }
 
     #[test]
     fn weak_haystack_still_detected() {
         let mut spec = empty_floor(-80.0);
         paint_haystack(&mut spec, 96_000_000.0, -70.0, -80.0);
-        let hits = detect_fm_channels(&spec);
-        assert_eq!(freqs(&hits), vec![96_000]);
+        assert_eq!(freqs(&detect_fm_channels(&spec)), vec![96_000]);
     }
 
     #[test]
@@ -315,6 +382,25 @@ mod tests {
         paint_haystack(&mut spec, 102_000_000.0, -50.0, -80.0);
         paint_haystack(&mut spec, 102_400_000.0, -52.0, -80.0);
         assert_eq!(freqs(&detect_fm_channels(&spec)), vec![102_000, 102_400]);
+    }
+
+    #[test]
+    fn weaker_200_khz_sidelobe_is_dropped() {
+        let mut spec = empty_floor(-80.0);
+        paint_haystack(&mut spec, 105_000_000.0, -48.0, -80.0);
+        paint_haystack(&mut spec, 105_200_000.0, -62.0, -80.0);
+        assert_eq!(freqs(&detect_fm_channels(&spec)), vec![105_000]);
+    }
+
+    #[test]
+    fn plateau_with_small_dip_is_one_station() {
+        let mut spec = empty_floor(-80.0);
+        paint_haystack(&mut spec, 104_900_000.0, -50.0, -80.0);
+        paint_haystack(&mut spec, 105_000_000.0, -51.0, -80.0);
+        paint_haystack(&mut spec, 105_100_000.0, -50.5, -80.0);
+        let hits = detect_fm_channels(&spec);
+        assert_eq!(hits.len(), 1, "got {hits:?}");
+        assert!((104_800..=105_200).contains(&hits[0].frequency_khz));
     }
 
     #[test]
@@ -330,8 +416,10 @@ mod tests {
         let center = 97_500_000.0;
         let half_top = 25_000.0;
         let half_bot = 70_000.0;
-        for i in 0..spec.power_db.len() {
-            let f = spec.freq_hz(i);
+        let start = spec.start_hz;
+        let step = spec.bin_hz;
+        for (i, bin) in spec.power_db.iter_mut().enumerate() {
+            let f = start + i as f64 * step;
             let d = (f - center).abs();
             let excess = if d <= half_top {
                 12.0
@@ -341,7 +429,7 @@ mod tests {
                 let t = ((half_bot - d) / (half_bot - half_top)) as f32;
                 12.0 * t
             };
-            spec.power_db[i] = -80.0 + excess;
+            *bin = -80.0 + excess;
         }
         assert_eq!(freqs(&detect_fm_channels(&spec)), vec![97_500]);
     }
@@ -364,20 +452,20 @@ mod tests {
     #[test]
     fn merge_drops_100_khz_duplicate() {
         let peaks = vec![
-            DetectedChannel {
-                frequency_khz: 105_000,
-                snr_db: 12.0,
-                occupancy: 0.7,
-                bandwidth_hz: 160_000.0,
-            },
-            DetectedChannel {
-                frequency_khz: 105_100,
-                snr_db: 9.0,
-                occupancy: 0.5,
-                bandwidth_hz: 140_000.0,
-            },
+            channel(105_000, 12.0, 0.7, 160_000.0),
+            channel(105_100, 9.0, 0.5, 140_000.0),
         ];
         let merged = merge_spaced(peaks, MIN_SEP_KHZ, MAX_CHANNELS);
         assert_eq!(freqs(&merged), vec![105_000]);
+    }
+
+    #[test]
+    fn merge_keeps_stronger_of_200_khz_pair() {
+        let peaks = vec![
+            channel(88_000, 18.0, 0.8, 170_000.0),
+            channel(88_200, 9.0, 0.4, 90_000.0),
+        ];
+        let merged = merge_spaced(peaks, MIN_SEP_KHZ, MAX_CHANNELS);
+        assert_eq!(freqs(&merged), vec![88_000]);
     }
 }

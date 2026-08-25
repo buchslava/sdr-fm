@@ -5,10 +5,18 @@ use std::time::Duration;
 use crossbeam_channel::{bounded, Sender};
 
 use crate::dsp::{self, DspCommand};
+use futuresdr::seify::{Device, GenericDevice};
 
 const FM_MIN_KHZ: u32 = 64_000;
 const FM_MAX_KHZ: u32 = 1_080_000;
 const DSP_START_TIMEOUT: Duration = Duration::from_secs(15);
+
+fn tuned_message(frequency_hz: u64) -> String {
+    format!(
+        "Tuned to {:.3} MHz (WBFM)",
+        frequency_hz as f64 / 1_000_000.0
+    )
+}
 
 pub struct SdrPlayer {
     inner: Mutex<Supervisor>,
@@ -42,7 +50,7 @@ impl SdrPlayer {
         }
 
         let frequency_hz = frequency_khz as u64 * 1_000;
-        let message = format!("Tuned to {:.3} MHz (WBFM)", frequency_khz as f64 / 1000.0);
+        let message = tuned_message(frequency_hz);
 
         {
             let supervisor = self.lock_inner()?;
@@ -83,14 +91,11 @@ impl SdrPlayer {
 impl Supervisor {
     fn spawn_pipeline(
         &mut self,
-        dev: futuresdr::seify::Device<futuresdr::seify::GenericDevice>,
+        dev: Device<GenericDevice>,
         sample_rate: u32,
         frequency_hz: u64,
     ) -> Result<String, String> {
-        let message = format!(
-            "Tuned to {:.3} MHz (WBFM)",
-            frequency_hz as f64 / 1_000_000.0
-        );
+        let message = tuned_message(frequency_hz);
 
         self.disconnect();
 

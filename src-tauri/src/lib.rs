@@ -38,7 +38,6 @@ async fn scan_fm_band(
     player.stop()?;
     std::thread::sleep(std::time::Duration::from_millis(800));
 
-    let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         dsp::scan_band(|progress: ScanProgress| {
             let _ = app.emit("scan-progress", &progress);
@@ -82,7 +81,7 @@ pub fn run() {
         ]);
 
     #[cfg(target_os = "macos")]
-    let builder = builder.menu(|app| macos_menu::default_menu(app));
+    let builder = builder.menu(macos_menu::default_menu);
 
     builder
         .run(tauri::generate_context!())
