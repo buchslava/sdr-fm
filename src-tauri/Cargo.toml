@@ -29,6 +29,9 @@ futuresdr = { version = "0.0.40", features = ["seify", "soapy", "audio"] }
 crossbeam-channel = "0.5"
 num-complex = "0.4"
 libc = "0.2"
+fmradio = "0.4.2"
+desperado = "0.4.2"
+rustfft = "6.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = "0.3"

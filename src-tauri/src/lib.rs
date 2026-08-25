@@ -5,7 +5,7 @@ mod macos_menu;
 mod macos_spellcheck;
 mod sdr;
 
-use config::{Station, load_stations, save_stations};
+use config::{load_stations, save_stations, Station};
 use dsp::ScanProgress;
 use sdr::SdrPlayer;
 use tauri::{AppHandle, Emitter};
@@ -36,7 +36,7 @@ async fn scan_fm_band(
 ) -> Result<Vec<Station>, String> {
     // Release the dongle from playback before the blocking scan thread opens it.
     player.stop()?;
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::thread::sleep(std::time::Duration::from_millis(800));
 
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {

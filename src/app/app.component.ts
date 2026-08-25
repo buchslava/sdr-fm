@@ -56,7 +56,7 @@ export class AppComponent implements OnInit, OnDestroy {
         "scan-progress",
         (event) => {
           const p = event.payload;
-          const phase = p.phase === "rds" ? "RDS" : "Power";
+          const phase = p.phase === "rds" ? "RDS" : "Spectrum";
           this.status.set(
             `Scanning ${phase} ${p.current}/${p.total} @ ${p.mhz.toFixed(1)} MHz…`,
           );

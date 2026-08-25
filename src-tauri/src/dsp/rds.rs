@@ -231,7 +231,11 @@ impl RdsPsDecoder {
         self.integ = 0.0;
 
         // Differential BPSK decode.
-        let bit = if symbol * self.last_symbol >= 0.0 { 0u8 } else { 1u8 };
+        let bit = if symbol * self.last_symbol >= 0.0 {
+            0u8
+        } else {
+            1u8
+        };
         self.last_symbol = symbol;
         self.push_bit(bit);
     }

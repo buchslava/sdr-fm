@@ -12,7 +12,7 @@ const SPELLCHECK_KEYS: &[&str] = &[
 
 #[cfg(target_os = "macos")]
 pub fn disable_webview_spellcheck() {
-    use objc2_foundation::{NSUserDefaults, NSString};
+    use objc2_foundation::{NSString, NSUserDefaults};
 
     let defaults = NSUserDefaults::standardUserDefaults();
     for key_str in SPELLCHECK_KEYS {

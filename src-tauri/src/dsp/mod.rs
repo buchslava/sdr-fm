@@ -1,23 +1,22 @@
 mod command;
+mod detect;
 mod flowgraph;
 mod rds;
 mod scan;
 mod silence;
+mod spectrum;
 
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::thread;
 
 use crossbeam_channel::{Receiver, Sender};
 use futuresdr::seify::{Device, GenericDevice};
 
 pub use command::DspCommand;
-pub use scan::{ScanProgress, scan_band};
+pub use scan::{scan_band, ScanProgress};
 
-pub const RTL_SDR_OPEN_ARGS: &[&str] = &[
-    "driver=soapy,soapy_driver=rtlsdr",
-    "driver=rtlsdr",
-];
+pub const RTL_SDR_OPEN_ARGS: &[&str] = &["driver=soapy,soapy_driver=rtlsdr", "driver=rtlsdr"];
 pub const DEFAULT_SAMPLE_RATE: u32 = 1_024_000;
 
 /// RTL2832 valid bands: 225_001–300_000 Hz and 900_001–3_200_000 Hz.
@@ -26,14 +25,7 @@ const RTL_SDR_MIN_SAMPLE_RATE: u32 = 225_001;
 const RTL_SDR_MAX_SAMPLE_RATE: u32 = 3_200_000;
 
 const RTL_SDR_PREFERRED_RATES: &[u32] = &[
-    256_000,
-    1_024_000,
-    1_536_000,
-    1_792_000,
-    1_920_000,
-    2_048_000,
-    2_160_000,
-    2_560_000,
+    256_000, 1_024_000, 1_536_000, 1_792_000, 1_920_000, 2_048_000, 2_160_000, 2_560_000,
 ];
 
 const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = DEFAULT_SAMPLE_RATE;
@@ -77,7 +69,9 @@ pub fn effective_sample_rate() -> u32 {
 #[cfg(target_os = "linux")]
 pub fn configure_linux_audio_env() {
     if let Ok(device) = std::env::var("SDR_FM_ALSA_DEVICE") {
-        unsafe { std::env::set_var("ALSA_PCM_DEVICE", device); }
+        unsafe {
+            std::env::set_var("ALSA_PCM_DEVICE", device);
+        }
     }
 }
 

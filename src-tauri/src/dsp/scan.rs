@@ -1,34 +1,42 @@
-//! FM band power sweep and peak picking (bounded, crash-safe).
+//! FM band scan: wideband Welch PSD hops → OS-CFAR occupancy detector → RDS names.
+//!
+//! Detection is done on the stitched spectrum (see `spectrum` / `detect`). This
+//! module only talks to the RTL-SDR, reports progress, and optionally fills
+//! RDS PS names on the strongest hits.
 
+use std::collections::HashMap;
+use std::f32::consts::PI;
 use std::time::{Duration, Instant};
 
+use desperado::dsp::{decimator::Decimator, rotate::Rotate, DspBlock};
+use fmradio::fm::PhaseExtractor;
+use fmradio::rds::{RdsDecoder, RdsResamplerCustom, StereoDecoderPLL};
 use futuresdr::num_complex::Complex32;
 use futuresdr::seify::{Device, Direction, GenericDevice, RxStreamer};
 use serde::Serialize;
 
 use crate::config::Station;
 
-use super::rds::RdsPsDecoder;
+use super::detect::{detect_fm_channels, DetectedChannel};
+use super::spectrum::{
+    hop_lo_hz, hop_step_hz, usable_half_hz, SpectrumAccumulator, SpectrumEngine, BAND_END_HZ,
+    BAND_START_HZ, FFT_SIZE, GRID_HZ, PREFERRED_SAMPLE_RATES,
+};
 use super::{is_rtlsdr_valid_sample_rate, open_device};
 
-pub const SCAN_START_KHZ: u32 = 87_500;
-pub const SCAN_END_KHZ: u32 = 108_000;
-/// 200 kHz steps → ~103 points (faster, still fine for FM channel spacing).
-pub const SCAN_STEP_KHZ: u32 = 200;
-pub const MIN_PEAK_SEP_KHZ: u32 = 300;
-pub const MAX_PEAKS: usize = 20;
-/// Only the strongest peaks get an RDS dwell (keeps scan under ~1–2 minutes).
-const MAX_RDS_PEAKS: usize = 8;
-const SCAN_SAMPLE_RATE: u32 = 256_000;
+const MAX_RDS_PEAKS: usize = 15;
+const OFFSET_FREQ: i32 = 200_000;
+const FM_BANDWIDTH: f32 = 256_000.0;
 const DEFAULT_GAIN_DB: f64 = 40.0;
-const BUF_LEN: usize = 8_192;
-/// Hard cap per read attempt so Soapy/RTL cannot block forever.
+const BUF_LEN: usize = 16_384;
 const READ_TIMEOUT_US: i64 = 200_000;
-const MAX_READ_ATTEMPTS: u32 = 6;
-const RDS_DWELL_SECS: f32 = 1.5;
-const POWER_MARGIN_DB: f32 = 3.0;
-/// Whole-scan wall-clock budget (power + RDS).
-const SCAN_DEADLINE: Duration = Duration::from_secs(90);
+const MAX_READ_ATTEMPTS: u32 = 8;
+const SETTLE_READS: u32 = 4;
+const TUNE_SETTLE: Duration = Duration::from_millis(15);
+const SPECTRUM_DWELL: Duration = Duration::from_millis(150);
+const RDS_DWELL: Duration = Duration::from_millis(2500);
+const SCAN_DEADLINE: Duration = Duration::from_secs(150);
+const MAX_IQ_SAMPLES: usize = 400_000;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,116 +47,66 @@ pub struct ScanProgress {
     pub mhz: f64,
 }
 
-/// Pick local maxima from a power vector (dB). Pure function for unit tests.
-pub fn pick_peaks(
-    freqs_khz: &[u32],
-    power_db: &[f32],
-    threshold_db: f32,
-    min_sep_khz: u32,
-    max_peaks: usize,
-) -> Vec<(u32, f32)> {
-    assert_eq!(freqs_khz.len(), power_db.len());
-    if freqs_khz.len() < 3 {
-        return Vec::new();
-    }
-
-    let mut candidates: Vec<(u32, f32)> = Vec::new();
-    for i in 1..power_db.len() - 1 {
-        let p = power_db[i];
-        if p < threshold_db {
-            continue;
-        }
-        if p >= power_db[i - 1] && p >= power_db[i + 1] {
-            candidates.push((freqs_khz[i], p));
-        }
-    }
-
-    select_spaced(&mut candidates, min_sep_khz, max_peaks)
+struct RdsDsp {
+    rotate: Rotate,
+    decimator: Decimator,
+    phase_extractor: PhaseExtractor,
+    stereo: StereoDecoderPLL,
+    mpx_rate: f32,
+    offset_freq: i32,
+    sample_rate: u32,
 }
 
-pub fn pick_top_powers(
-    freqs_khz: &[u32],
-    power_db: &[f32],
-    threshold_db: f32,
-    min_sep_khz: u32,
-    max_peaks: usize,
-) -> Vec<(u32, f32)> {
-    assert_eq!(freqs_khz.len(), power_db.len());
-    let mut candidates: Vec<(u32, f32)> = freqs_khz
-        .iter()
-        .zip(power_db.iter())
-        .filter(|(_, p)| **p >= threshold_db)
-        .map(|(&f, &p)| (f, p))
-        .collect();
-    select_spaced(&mut candidates, min_sep_khz, max_peaks)
-}
+impl RdsDsp {
+    fn new(sample_rate: u32, offset_freq: i32) -> Self {
+        let factor = (sample_rate as f32 / FM_BANDWIDTH).round().max(1.0) as usize;
+        let mpx_rate = sample_rate as f32 / factor as f32;
+        Self {
+            rotate: Rotate::new(-2.0 * PI * offset_freq as f32 / sample_rate as f32),
+            decimator: Decimator::new(factor),
+            phase_extractor: PhaseExtractor::new(),
+            stereo: StereoDecoderPLL::new(mpx_rate),
+            mpx_rate,
+            offset_freq,
+            sample_rate,
+        }
+    }
 
-fn select_spaced(
-    candidates: &mut Vec<(u32, f32)>,
-    min_sep_khz: u32,
-    max_peaks: usize,
-) -> Vec<(u32, f32)> {
-    candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    fn reset_after_tune(&mut self) {
+        self.rotate = Rotate::new(-2.0 * PI * self.offset_freq as f32 / self.sample_rate as f32);
+        self.decimator.reset();
+        self.phase_extractor.reset();
+        self.stereo = StereoDecoderPLL::new(self.mpx_rate);
+    }
 
-    let mut selected: Vec<(u32, f32)> = Vec::new();
-    for (freq, power) in candidates.drain(..) {
-        if selected
+    fn feed_rds(
+        &mut self,
+        chunk: &[Complex32],
+        rds_resampler: &mut RdsResamplerCustom,
+        rds: &mut RdsDecoder,
+    ) {
+        let complex: Vec<num_complex::Complex<f32>> = chunk
             .iter()
-            .any(|(f, _)| f.abs_diff(freq) < min_sep_khz)
-        {
-            continue;
-        }
-        selected.push((freq, power));
-        if selected.len() >= max_peaks {
-            break;
-        }
+            .map(|c| num_complex::Complex::new(c.re, c.im))
+            .collect();
+        let shifted = self.rotate.process(&complex);
+        let decimated = self.decimator.process(&shifted);
+        let phase = self.phase_extractor.process(&decimated);
+        let (_, _, pilot_phases) = self.stereo.process(&phase);
+        let (rds_i, rds_q) = rds_resampler.process_with_pilot(&phase, &pilot_phases);
+        rds.process_iq(&rds_i, &rds_q);
     }
-
-    selected.sort_by_key(|(f, _)| *f);
-    selected
 }
 
-fn percentile_f32(values: &[f32], pct: f32) -> f32 {
-    if values.is_empty() {
-        return 0.0;
+fn tuning_lo_hz(air_hz: u64, offset_freq_hz: i32) -> f64 {
+    if offset_freq_hz >= 0 {
+        air_hz.saturating_sub(offset_freq_hz as u64) as f64
+    } else {
+        air_hz.saturating_add((-offset_freq_hz) as u64) as f64
     }
-    let mut sorted = values.to_vec();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let idx = ((pct.clamp(0.0, 1.0) * (sorted.len() as f32 - 1.0)).round() as usize)
-        .min(sorted.len() - 1);
-    sorted[idx]
 }
 
-fn center_power_db(samples: &[Complex32]) -> f32 {
-    if samples.len() < 64 {
-        if samples.is_empty() {
-            return -120.0;
-        }
-        let sum: f32 = samples.iter().map(|c| c.norm_sqr()).sum();
-        return 10.0 * ((sum / samples.len() as f32).max(1e-20)).log10();
-    }
-    let block = 32usize;
-    let mut sum = 0.0f32;
-    let mut n = 0usize;
-    let mut i = 0;
-    while i + block <= samples.len() {
-        let mut acc = Complex32::new(0.0, 0.0);
-        for s in &samples[i..i + block] {
-            acc += *s;
-        }
-        acc /= block as f32;
-        sum += acc.norm_sqr();
-        n += 1;
-        i += block;
-    }
-    10.0 * ((sum / n.max(1) as f32).max(1e-20)).log10()
-}
-
-/// Non-blocking-ish read: returns None on timeout / empty after a few tries.
-fn read_some(
-    rx: &mut Box<dyn RxStreamer>,
-    buf: &mut [Complex32],
-) -> Option<usize> {
+fn read_some(rx: &mut Box<dyn RxStreamer>, buf: &mut [Complex32]) -> Option<usize> {
     for _ in 0..MAX_READ_ATTEMPTS {
         match rx.read(&mut [&mut buf[..]], READ_TIMEOUT_US) {
             Ok(n) if n > 0 => return Some(n),
@@ -165,80 +123,104 @@ fn discard_reads(rx: &mut Box<dyn RxStreamer>, buf: &mut [Complex32], count: u32
     }
 }
 
-fn tune(
+fn tune_lo(
     dev: &Device<GenericDevice>,
     rx: &mut Box<dyn RxStreamer>,
     buf: &mut [Complex32],
-    freq_hz: f64,
+    lo_hz: f64,
 ) -> Result<(), String> {
-    // Retune while inactive is more reliable on RTL/Soapy and avoids USB wedging.
     let _ = rx.deactivate();
-    dev.set_frequency(Direction::Rx, 0, freq_hz)
+    dev.set_frequency(Direction::Rx, 0, lo_hz)
         .map_err(|e| format!("Tune failed: {e}"))?;
-    std::thread::sleep(Duration::from_millis(5));
+    std::thread::sleep(TUNE_SETTLE);
     rx.activate()
         .map_err(|e| format!("RX activate failed: {e}"))?;
-    discard_reads(rx, buf, 2);
+    discard_reads(rx, buf, SETTLE_READS);
     Ok(())
 }
 
-fn measure_power(
+fn collect_iq(
     rx: &mut Box<dyn RxStreamer>,
     buf: &mut [Complex32],
-) -> Option<f32> {
-    discard_reads(rx, buf, 1);
-    let n = read_some(rx, buf)?;
-    Some(center_power_db(&buf[..n]))
-}
-
-/// Feed RDS decoder from live IQ without allocating multi-second buffers.
-fn try_rds_name(
-    rx: &mut Box<dyn RxStreamer>,
-    buf: &mut [Complex32],
-    sample_rate: u32,
-    dwell_secs: f32,
-) -> String {
-    let mut decoder = RdsPsDecoder::new(sample_rate);
-    let target = ((sample_rate as f32) * dwell_secs) as usize;
-    let mut got_total = 0usize;
-    let deadline = Instant::now() + Duration::from_secs_f32(dwell_secs + 1.0);
-
-    discard_reads(rx, buf, 2);
-
-    while got_total < target && Instant::now() < deadline {
+    dwell: Duration,
+) -> Vec<Complex32> {
+    let mut iq = Vec::with_capacity(MAX_IQ_SAMPLES.min((dwell.as_secs_f64() * 2.5e6) as usize));
+    let deadline = Instant::now() + dwell;
+    while Instant::now() < deadline && iq.len() < MAX_IQ_SAMPLES {
         let Some(n) = read_some(rx, buf) else {
             break;
         };
-        decoder.feed_iq(&buf[..n]);
-        got_total += n;
-        if decoder.ps_name().is_some() {
+        iq.extend_from_slice(&buf[..n]);
+    }
+    iq
+}
+
+fn try_rds_name(
+    dev: &Device<GenericDevice>,
+    rx: &mut Box<dyn RxStreamer>,
+    buf: &mut [Complex32],
+    dsp: &mut RdsDsp,
+    air_hz: u64,
+    dwell: Duration,
+) -> String {
+    if tune_lo(dev, rx, buf, tuning_lo_hz(air_hz, OFFSET_FREQ)).is_err() {
+        return String::new();
+    }
+    dsp.reset_after_tune();
+
+    let rds_target_rate = 171_000.0_f32;
+    let mut rds_resampler = RdsResamplerCustom::new(dsp.mpx_rate, rds_target_rate);
+    let mut rds = RdsDecoder::new(rds_target_rate, false);
+    rds.set_print_json_output(false);
+
+    let deadline = Instant::now() + dwell;
+    while Instant::now() < deadline {
+        let Some(n) = read_some(rx, buf) else {
             break;
+        };
+        dsp.feed_rds(&buf[..n], &mut rds_resampler, &mut rds);
+        if let Some(name) = rds.station_name() {
+            let trimmed = name.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
         }
     }
 
-    decoder
-        .ps_name()
+    rds.station_name()
         .map(|s| s.trim().to_string())
         .unwrap_or_default()
 }
 
-fn scan_sample_rate() -> u32 {
-    if is_rtlsdr_valid_sample_rate(SCAN_SAMPLE_RATE) {
-        SCAN_SAMPLE_RATE
-    } else {
-        1_024_000
+fn configure_device(dev: &Device<GenericDevice>) -> Result<u32, String> {
+    if let Ok(true) = dev.supports_agc(Direction::Rx, 0) {
+        let _ = dev.enable_agc(Direction::Rx, 0, false);
     }
+    if let Err(e) = dev.set_gain(Direction::Rx, 0, DEFAULT_GAIN_DB) {
+        eprintln!("scan set_gain({DEFAULT_GAIN_DB}): {e}; continuing");
+    }
+
+    let mut last_err = String::new();
+    for &rate in PREFERRED_SAMPLE_RATES {
+        if !is_rtlsdr_valid_sample_rate(rate) {
+            continue;
+        }
+        match dev.set_sample_rate(Direction::Rx, 0, rate as f64) {
+            Ok(()) => return Ok(rate),
+            Err(e) => last_err = e.to_string(),
+        }
+    }
+
+    Err(format!("set_sample_rate failed: {last_err}"))
 }
 
-/// Full band scan: power sweep, peak pick, short RDS dwell on strongest peaks.
 pub fn scan_band<F>(mut on_progress: F) -> Result<Vec<Station>, String>
 where
     F: FnMut(ScanProgress),
 {
     let started = Instant::now();
-    let sample_rate = scan_sample_rate();
     let dev = open_device()?;
-    configure_device(&dev, sample_rate)?;
+    let sample_rate = configure_device(&dev)?;
 
     let mut rx = dev
         .rx_streamer(&[0])
@@ -247,110 +229,106 @@ where
         .map_err(|e| format!("Failed to activate RX: {e}"))?;
 
     let mut buf = vec![Complex32::new(0.0, 0.0); BUF_LEN];
-    discard_reads(&mut rx, &mut buf, 2);
+    discard_reads(&mut rx, &mut buf, SETTLE_READS);
 
-    let freqs: Vec<u32> = (SCAN_START_KHZ..=SCAN_END_KHZ)
-        .step_by(SCAN_STEP_KHZ as usize)
-        .collect();
-    let total_power = freqs.len() as u32;
-    let mut powers = Vec::with_capacity(freqs.len());
+    let usable_half = usable_half_hz(sample_rate);
+    let step = hop_step_hz(usable_half);
+    let hops = hop_lo_hz(BAND_START_HZ, BAND_END_HZ, usable_half, step);
+    let total_hops = hops.len() as u32;
 
-    for (i, &freq_khz) in freqs.iter().enumerate() {
+    let mut engine = SpectrumEngine::new(FFT_SIZE);
+    let mut acc = SpectrumAccumulator::new(BAND_START_HZ, BAND_END_HZ, GRID_HZ);
+
+    for (i, &lo_hz) in hops.iter().enumerate() {
         if started.elapsed() > SCAN_DEADLINE {
             break;
         }
         on_progress(ScanProgress {
-            phase: "power".into(),
+            phase: "spectrum".into(),
             current: (i as u32) + 1,
-            total: total_power,
-            mhz: freq_khz as f64 / 1_000.0,
+            total: total_hops.max(1),
+            mhz: lo_hz / 1_000_000.0,
         });
 
-        let hz = freq_khz as f64 * 1_000.0;
-        if let Err(e) = tune(&dev, &mut rx, &mut buf, hz) {
-            eprintln!("scan tune {freq_khz}: {e}");
-            powers.push(-120.0);
+        if tune_lo(&dev, &mut rx, &mut buf, lo_hz).is_err() {
             continue;
         }
-        let p = measure_power(&mut rx, &mut buf).unwrap_or(-120.0);
-        powers.push(p);
+        let iq = collect_iq(&mut rx, &mut buf, SPECTRUM_DWELL);
+        if iq.len() < FFT_SIZE {
+            continue;
+        }
+        let power = engine.welch_power(&iq);
+        acc.accumulate_hop(lo_hz, &power, sample_rate, usable_half);
     }
 
-    // Align lengths if we aborted early.
-    let freqs = &freqs[..powers.len()];
-    if freqs.is_empty() {
-        let _ = rx.deactivate();
-        return Err("Scan aborted before any frequencies were measured.".into());
-    }
-
-    let noise = percentile_f32(&powers, 0.20);
-    let max_p = powers
-        .iter()
-        .cloned()
-        .fold(f32::NEG_INFINITY, f32::max);
-    let threshold = noise + POWER_MARGIN_DB;
-
-    let mut peaks = pick_peaks(freqs, &powers, threshold, MIN_PEAK_SEP_KHZ, MAX_PEAKS);
-    if peaks.is_empty() {
-        peaks = pick_top_powers(freqs, &powers, threshold, MIN_PEAK_SEP_KHZ, MAX_PEAKS);
-    }
-    if peaks.is_empty() && max_p.is_finite() {
-        peaks = pick_top_powers(freqs, &powers, max_p - 12.0, MIN_PEAK_SEP_KHZ, MAX_PEAKS);
-    }
+    let spectrum = acc.finish();
+    let detected = detect_fm_channels(&spectrum);
 
     eprintln!(
-        "FM scan power done in {:.1}s: noise={noise:.1} max={max_p:.1} thr={threshold:.1} peaks={}",
+        "FM scan spectrum done in {:.1}s ({} hops @ {} Hz): {} channels",
         started.elapsed().as_secs_f32(),
-        peaks.len()
+        hops.len(),
+        sample_rate,
+        detected.len()
     );
-
-    if peaks.is_empty() {
-        let _ = rx.deactivate();
-        return Err(format!(
-            "No FM carriers found (noise={noise:.1} dB, max={max_p:.1} dB). \
-             Try another antenna position."
-        ));
+    for ch in &detected {
+        eprintln!(
+            "  {:.1} MHz  SNR={:.1} dB  occ={:.0}%  Beq={:.0} kHz",
+            ch.frequency_khz as f64 / 1_000.0,
+            ch.snr_db,
+            ch.occupancy * 100.0,
+            ch.bandwidth_hz / 1_000.0
+        );
     }
 
-    // RDS only on strongest few peaks.
-    let mut peaks_by_power = peaks.clone();
-    peaks_by_power.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    peaks_by_power.truncate(MAX_RDS_PEAKS);
+    if detected.is_empty() {
+        let _ = rx.deactivate();
+        return Err("No FM stations found. Try another antenna position or higher gain.".into());
+    }
 
-    let mut name_by_freq: std::collections::HashMap<u32, String> =
-        std::collections::HashMap::with_capacity(peaks_by_power.len());
+    let mut by_score = detected.clone();
+    by_score.sort_by(|a, b| {
+        b.snr_db
+            .partial_cmp(&a.snr_db)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    by_score.truncate(MAX_RDS_PEAKS);
 
-    let total_rds = peaks_by_power.len() as u32;
-    for (i, &(freq_khz, _)) in peaks_by_power.iter().enumerate() {
+    let mut dsp = RdsDsp::new(sample_rate, OFFSET_FREQ);
+    let mut name_by_freq: HashMap<u32, String> = HashMap::with_capacity(by_score.len());
+    let total_rds = by_score.len() as u32;
+
+    for (i, ch) in by_score.iter().enumerate() {
         if started.elapsed() > SCAN_DEADLINE {
-            eprintln!("FM scan: RDS phase cut short by deadline");
             break;
         }
         on_progress(ScanProgress {
             phase: "rds".into(),
             current: (i as u32) + 1,
             total: total_rds.max(1),
-            mhz: freq_khz as f64 / 1_000.0,
+            mhz: ch.frequency_khz as f64 / 1_000.0,
         });
-
-        let hz = freq_khz as f64 * 1_000.0;
-        if tune(&dev, &mut rx, &mut buf, hz).is_err() {
-            name_by_freq.insert(freq_khz, String::new());
-            continue;
-        }
-        let name = try_rds_name(&mut rx, &mut buf, sample_rate, RDS_DWELL_SECS);
-        name_by_freq.insert(freq_khz, name);
+        let name = try_rds_name(
+            &dev,
+            &mut rx,
+            &mut buf,
+            &mut dsp,
+            ch.frequency_khz as u64 * 1_000,
+            RDS_DWELL,
+        );
+        name_by_freq.insert(ch.frequency_khz, name);
     }
 
     let _ = rx.deactivate();
+    drop(rx);
+    drop(dev);
+    std::thread::sleep(Duration::from_millis(400));
 
-    let mut stations: Vec<Station> = peaks
+    let mut stations: Vec<Station> = detected
         .into_iter()
-        .map(|(frequency_khz, _)| Station {
+        .map(|DetectedChannel { frequency_khz, .. }| Station {
             id: format!("scan-{frequency_khz}"),
-            name: name_by_freq
-                .remove(&frequency_khz)
-                .unwrap_or_default(),
+            name: name_by_freq.remove(&frequency_khz).unwrap_or_default(),
             frequency_khz,
         })
         .collect();
@@ -363,58 +341,4 @@ where
     );
 
     Ok(stations)
-}
-
-fn configure_device(dev: &Device<GenericDevice>, sample_rate: u32) -> Result<(), String> {
-    if let Ok(true) = dev.supports_agc(Direction::Rx, 0) {
-        let _ = dev.enable_agc(Direction::Rx, 0, false);
-    }
-    dev.set_sample_rate(Direction::Rx, 0, sample_rate as f64)
-        .map_err(|e| format!("set_sample_rate failed: {e}"))?;
-    if let Err(e) = dev.set_gain(Direction::Rx, 0, DEFAULT_GAIN_DB) {
-        eprintln!("scan set_gain({DEFAULT_GAIN_DB}): {e}; continuing");
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn picks_separated_local_maxima() {
-        let freqs: Vec<u32> = (87_500..=88_500).step_by(100).collect();
-        let mut power = vec![0.0f32; freqs.len()];
-        for (i, f) in freqs.iter().enumerate() {
-            if *f == 87_800 || *f == 88_300 {
-                power[i] = 20.0;
-            } else if *f == 87_700 || *f == 87_900 || *f == 88_200 || *f == 88_400 {
-                power[i] = 10.0;
-            }
-        }
-        let peaks = pick_peaks(&freqs, &power, 8.0, 200, 10);
-        let freqs_only: Vec<u32> = peaks.iter().map(|(f, _)| *f).collect();
-        assert_eq!(freqs_only, vec![87_800, 88_300]);
-    }
-
-    #[test]
-    fn respects_min_separation() {
-        let freqs = vec![100_000u32, 100_100, 100_200, 100_300];
-        let power = vec![5.0, 20.0, 19.0, 5.0];
-        let peaks = pick_peaks(&freqs, &power, 8.0, 200, 10);
-        assert_eq!(peaks.len(), 1);
-        assert_eq!(peaks[0].0, 100_100);
-    }
-
-    #[test]
-    fn top_powers_finds_carriers_without_sharp_peaks() {
-        let freqs: Vec<u32> = (90_000..=91_000).step_by(100).collect();
-        let power: Vec<f32> = freqs
-            .iter()
-            .map(|&f| if (90_400..=90_600).contains(&f) { 12.0 } else { 2.0 })
-            .collect();
-        let peaks = pick_top_powers(&freqs, &power, 5.0, 200, 5);
-        assert!(!peaks.is_empty());
-        assert!(peaks.iter().any(|(f, _)| (90_400..=90_600).contains(f)));
-    }
 }

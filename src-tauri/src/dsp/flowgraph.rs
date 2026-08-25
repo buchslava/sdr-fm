@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
@@ -10,7 +10,7 @@ use futuresdr::num_complex::Complex32;
 use futuresdr::prelude::*;
 use futuresdr::seify::{Device, GenericDevice};
 
-use super::command::{DspCommand, apply_command};
+use super::command::{apply_command, DspCommand};
 use super::silence;
 
 const DEFAULT_GAIN: f64 = 40.0;
@@ -67,8 +67,7 @@ fn run_pipeline(
             .build_source()
     })?;
 
-    let wbfm_decim_block =
-        FirBuilder::decimating::<Complex32, Complex32, Vec<f32>>(wbfm_decim);
+    let wbfm_decim_block = FirBuilder::decimating::<Complex32, Complex32, Vec<f32>>(wbfm_decim);
 
     let mut last_wbfm = Complex32::new(0.0, 0.0);
     let wbfm_gain = (wbfm_rate as f32) / (2.0 * std::f32::consts::PI * 75_000.0);
@@ -78,8 +77,7 @@ fn run_pipeline(
         phase * wbfm_gain
     });
 
-    let wbfm_resamp =
-        FirBuilder::resampling::<f32, f32>(AUDIO_RATE as usize, wbfm_rate as usize);
+    let wbfm_resamp = FirBuilder::resampling::<f32, f32>(AUDIO_RATE as usize, wbfm_rate as usize);
 
     let tau_s: f32 = 75e-6;
     let alpha: f32 = (-1.0 / (AUDIO_RATE as f32 * tau_s)).exp();
@@ -106,7 +104,12 @@ fn run_pipeline(
     let volume = fg.add(volume);
     let audio_sink = fg.add(audio_sink);
 
-    fg.stream(&src, |b| b.outputs().get_mut(0).unwrap(), &wbfm_decim_block, |b| b.input())?;
+    fg.stream(
+        &src,
+        |b| b.outputs().get_mut(0).unwrap(),
+        &wbfm_decim_block,
+        |b| b.input(),
+    )?;
     fg.stream(
         &wbfm_decim_block,
         |b| b.output(),

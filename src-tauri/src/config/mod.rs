@@ -1,3 +1,3 @@
 pub mod stations;
 
-pub use stations::{Station, load_stations, save_stations};
+pub use stations::{load_stations, save_stations, Station};

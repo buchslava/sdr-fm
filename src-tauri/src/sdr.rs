@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use crossbeam_channel::{Sender, bounded};
+use crossbeam_channel::{bounded, Sender};
 
 use crate::dsp::{self, DspCommand};
 
@@ -42,10 +42,7 @@ impl SdrPlayer {
         }
 
         let frequency_hz = frequency_khz as u64 * 1_000;
-        let message = format!(
-            "Tuned to {:.3} MHz (WBFM)",
-            frequency_khz as f64 / 1000.0
-        );
+        let message = format!("Tuned to {:.3} MHz (WBFM)", frequency_khz as f64 / 1000.0);
 
         {
             let supervisor = self.lock_inner()?;
@@ -79,9 +76,7 @@ impl SdrPlayer {
     }
 
     fn lock_inner(&self) -> Result<std::sync::MutexGuard<'_, Supervisor>, String> {
-        self.inner
-            .lock()
-            .map_err(|e: PoisonError<_>| e.to_string())
+        self.inner.lock().map_err(|e: PoisonError<_>| e.to_string())
     }
 }
 
