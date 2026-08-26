@@ -21,7 +21,7 @@ pub fn default_menu<R: Runtime>(app: &AppHandle<R>) -> Result<Menu<R>> {
             .license
             .clone()
             .or_else(|| Some("MIT License".into())),
-        authors: Some(vec!["Viacheslav Chub (viacheslav.chub@gmail.com)".into()]),
+        authors: Some(vec!["Viacheslav Chub (vyacheslav.chub@gmail.com)".into()]),
         ..Default::default()
     };
 

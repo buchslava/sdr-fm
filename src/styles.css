@@ -48,11 +48,22 @@
 
 :root {
   --wood-dark: #3f2c22;
+  --wood-mid: #6b4b3a;
+  --wood-deep: #2a1d17;
   --face-cream: #efe3cf;
+  --face-cream-hi: #f3ead8;
+  --face-tan: #c8b092;
   --scale-ink: #2b2119;
   --needle-red: #c42a1c;
   --scan-amber: #d4920a;
-  --btn-chrome: #d8c5aa;
+  --chrome-edge: #6b5344;
+  --chrome-mid: #8a735f;
+  --panel-hi: #2b2119;
+  --panel-lo: #1a1410;
+  --text-cream: #efe3cf;
+  --accent-amber: #f6c76a;
+  --btn-face: #f0e4d0;
+  --btn-face-lo: #d8c5aa;
 }
 
 html,

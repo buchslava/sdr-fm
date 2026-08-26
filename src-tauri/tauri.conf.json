@@ -14,9 +14,9 @@
       {
         "title": "SDR FM",
         "width": 760,
-        "height": 440,
-        "minWidth": 760,
-        "minHeight": 440
+        "height": 340,
+        "minWidth": 640,
+        "minHeight": 300
       }
     ],
     "security": {

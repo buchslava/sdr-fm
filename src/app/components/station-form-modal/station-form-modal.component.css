@@ -11,8 +11,8 @@
 .modal-panel {
   width: min(100%, 300px);
   padding: 12px;
-  background: linear-gradient(180deg, #f3ead8 0%, #e6d9c0 100%);
-  border: 2px solid #6b5344;
+  background: linear-gradient(180deg, var(--face-cream-hi) 0%, var(--face-cream) 100%);
+  border: 2px solid var(--chrome-edge);
   border-radius: 6px;
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.35),
@@ -43,9 +43,14 @@ input {
   font: inherit;
   color: var(--scale-ink);
   background: #faf4e8;
-  border: 1px solid #8a735f;
+  border: 1px solid var(--chrome-mid);
   border-radius: 4px;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+input:focus-visible {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 1px;
 }
 
 .field-error {
@@ -66,9 +71,9 @@ input {
   font: inherit;
   font-size: 11px;
   font-weight: 700;
-  color: #2b2119;
-  background: linear-gradient(180deg, #f0e4d0 0%, #d8c5aa 100%);
-  border: 1px solid #6b5344;
+  color: var(--scale-ink);
+  background: linear-gradient(180deg, var(--btn-face) 0%, var(--btn-face-lo) 100%);
+  border: 1px solid var(--chrome-edge);
   border-radius: 4px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.65),
@@ -76,8 +81,13 @@ input {
   cursor: pointer;
 }
 
+.modal-btn:focus-visible {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 1px;
+}
+
 .modal-btn:active {
-  background: linear-gradient(180deg, #d8c5aa 0%, #c8b092 100%);
+  background: linear-gradient(180deg, var(--btn-face-lo) 0%, var(--face-tan) 100%);
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.18);
   transform: translateY(1px);
 }

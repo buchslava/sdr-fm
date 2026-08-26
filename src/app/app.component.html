@@ -1,128 +1,125 @@
 <main class="rigonda-console">
   <section class="faceplate">
-    <div class="tuner-block">
-      <app-rigonda-dial
-        [stations]="store.stations()"
-        [selectedId]="store.selectedId()"
-        [scanHits]="scanHits()"
-        [disabled]="false"
-        (stationSelected)="selectStation($event)"
-        (noPresetNearby)="onNoPresetNearby()"
-      />
+    <app-rigonda-dial
+      [stations]="store.stations()"
+      [selectedId]="store.selectedId()"
+      [scanHits]="scanHits()"
+      (stationSelected)="selectStation($event)"
+      (noPresetNearby)="onNoPresetNearby()"
+    />
 
-      <div class="readout-strip">
-        <div class="readout">
-          @if (store.selectedStation(); as station) {
-            <span class="readout-freq">{{ formatMhz(station.frequencyKhz) }} MHz</span>
-            @if (showReadoutName(station)) {
-              <span class="readout-name">{{ station.name.trim() }}</span>
-            }
-          } @else {
-            <span class="readout-freq">—</span>
+    <div class="readout-strip">
+      <div class="readout">
+        @if (store.selectedStation(); as station) {
+          <span class="readout-freq">{{ formatMhz(station.frequencyKhz) }} MHz</span>
+          @if (showReadoutName(station)) {
+            <span class="readout-name">{{ station.name.trim() }}</span>
           }
-        </div>
+        } @else {
+          <span class="readout-freq">—</span>
+        }
+      </div>
+    </div>
+
+    <div class="control-bar">
+      <div class="control-group">
+        <button
+          type="button"
+          class="round-btn"
+          title="Add station"
+          aria-label="Add station"
+          (click)="openAdd()"
+          [disabled]="crudDisabled()"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              d="M8 3.5v9M3.5 8h9"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="round-btn"
+          title="Edit station"
+          aria-label="Edit station"
+          (click)="openEditSelected()"
+          [disabled]="crudDisabled() || !store.selectedId()"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M11.7 2.3a1.1 1.1 0 0 1 1.6 0l.4.4a1.1 1.1 0 0 1 0 1.6L5.8 11.6 3 12l.4-2.8L11.7 2.3Z"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="round-btn"
+          title="Remove station"
+          aria-label="Remove station"
+          (click)="deleteSelected()"
+          [disabled]="crudDisabled() || !store.selectedId()"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              d="M4 4l8 8M12 4l-8 8"
+            />
+          </svg>
+        </button>
       </div>
 
-      <div class="control-bar">
-        <div class="control-group">
-          <button
-            type="button"
-            class="round-btn"
-            title="Add station"
-            aria-label="Add station"
-            (click)="openAdd()"
-            [disabled]="crudDisabled()"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                d="M8 3.5v9M3.5 8h9"
-              />
-            </svg>
-          </button>
-          <button
-            type="button"
-            class="round-btn"
-            title="Edit station"
-            aria-label="Edit station"
-            (click)="openEditSelected()"
-            [disabled]="crudDisabled() || !store.selectedId()"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                fill="currentColor"
-                d="M11.7 2.3a1.1 1.1 0 0 1 1.6 0l.4.4a1.1 1.1 0 0 1 0 1.6L5.8 11.6 3 12l.4-2.8L11.7 2.3Z"
-              />
-            </svg>
-          </button>
-          <button
-            type="button"
-            class="round-btn"
-            title="Remove station"
-            aria-label="Remove station"
-            (click)="deleteSelected()"
-            [disabled]="crudDisabled() || !store.selectedId()"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                d="M4 4l8 8M12 4l-8 8"
-              />
-            </svg>
-          </button>
-        </div>
+      <span class="control-separator" aria-hidden="true"></span>
 
-        <span class="control-separator" aria-hidden="true"></span>
-
-        <div class="control-group">
-          <button
-            type="button"
-            class="round-btn"
-            title="Scan FM band (power + RDS)"
-            aria-label="Scan FM band"
-            (click)="scanBand()"
-            [disabled]="isPlaying() || isScanning()"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.4"
-                d="M8 12.5a4.5 4.5 0 0 0 0-9M8 10a2 2 0 0 0 0-4M8 2.5v1.2M8 12.3v1.2M2.5 8h1.2M12.3 8h1.2"
-              />
-            </svg>
-          </button>
-          <button
-            type="button"
-            class="round-btn round-btn-play"
-            title="Start"
-            aria-label="Start"
-            (click)="listen()"
-            [disabled]="isPlaying() || isScanning() || !store.selectedId()"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path fill="currentColor" d="M5 3.5 12.5 8 5 12.5V3.5Z" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            class="round-btn round-btn-stop"
-            title="Stop"
-            aria-label="Stop"
-            (click)="stop()"
-            [disabled]="!isPlaying() || isScanning()"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <rect fill="currentColor" x="4.5" y="4.5" width="7" height="7" rx="0.8" />
-            </svg>
-          </button>
-        </div>
+      <div class="control-group">
+        <button
+          type="button"
+          class="round-btn"
+          title="Scan FM band"
+          aria-label="Scan FM band"
+          (click)="scanBand()"
+          [disabled]="isPlaying() || isScanning()"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              d="M8 12.5a4.5 4.5 0 0 0 0-9M8 10a2 2 0 0 0 0-4M8 2.5v1.2M8 12.3v1.2M2.5 8h1.2M12.3 8h1.2"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="round-btn round-btn-play"
+          title="Start"
+          aria-label="Start"
+          (click)="listen()"
+          [disabled]="isPlaying() || isScanning() || !store.selectedId()"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path fill="currentColor" d="M5 3.5 12.5 8 5 12.5V3.5Z" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="round-btn round-btn-stop"
+          title="Stop"
+          aria-label="Stop"
+          (click)="stop()"
+          [disabled]="!isPlaying() || isScanning()"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <rect fill="currentColor" x="4.5" y="4.5" width="7" height="7" rx="0.8" />
+          </svg>
+        </button>
       </div>
     </div>
   </section>

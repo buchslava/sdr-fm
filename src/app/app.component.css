@@ -11,52 +11,50 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
   min-height: 0;
-  padding: 10px 16px 8px;
-  gap: 4px;
+  padding: 8px 12px 6px;
+  gap: 6px;
   box-sizing: border-box;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, transparent 18%),
-    linear-gradient(135deg, #4a3428 0%, #6b4b3a 45%, #3f2c22 100%);
-  border: 3px solid #2a1d17;
+    linear-gradient(135deg, #4a3428 0%, var(--wood-mid) 45%, var(--wood-dark) 100%);
+  border: 3px solid var(--wood-deep);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .faceplate {
-  flex: 0 0 auto;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
-  padding: 10px;
-  background: linear-gradient(180deg, #d9c5a8 0%, #c8b092 100%);
-  border: 2px solid #8a735f;
+  min-height: 0;
+  padding: 8px;
+  background: linear-gradient(180deg, #d9c5a8 0%, var(--face-tan) 100%);
+  border: 2px solid var(--chrome-mid);
   border-radius: 6px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.25),
     0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
-.tuner-block {
-  flex: 0 0 auto;
+.faceplate > app-rigonda-dial {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0;
-  width: 100%;
 }
 
-.tuner-block app-rigonda-dial {
-  flex: 0 0 auto;
+.readout-strip,
+.control-bar,
+.status-bar {
+  flex-shrink: 0;
+  background: linear-gradient(180deg, var(--panel-hi) 0%, var(--panel-lo) 100%);
+  border: 1px solid #0f0b08;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 .readout-strip {
-  flex-shrink: 0;
-  padding: 6px 12px;
-  background: linear-gradient(180deg, #2b2119 0%, #1a1410 100%);
-  border: 1px solid #0f0b08;
+  padding: 5px 10px;
   border-top: none;
-  border-radius: 0;
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 
 .readout {
@@ -70,11 +68,10 @@
 .readout-freq {
   flex-shrink: 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
-  color: #f6c76a;
+  color: var(--accent-amber);
   text-shadow: 0 0 8px rgba(246, 199, 106, 0.35);
-  white-space: nowrap;
 }
 
 .readout-name {
@@ -83,22 +80,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #efe3cf;
+  color: var(--text-cream);
   font-size: 12px;
 }
 
 .control-bar {
-  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 8px 10px;
-  background: linear-gradient(180deg, #2b2119 0%, #1a1410 100%);
-  border: 1px solid #0f0b08;
+  padding: 6px 10px;
   border-top: none;
   border-radius: 0 0 4px 4px;
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
 .control-group {
@@ -109,22 +102,22 @@
 
 .control-separator {
   width: 1px;
-  height: 28px;
+  height: 26px;
   background: rgba(244, 234, 216, 0.18);
 }
 
 .round-btn {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   font: inherit;
-  color: #2b2119;
-  background: linear-gradient(180deg, #f0e4d0 0%, #d8c5aa 100%);
-  border: 1px solid #6b5344;
+  color: var(--scale-ink);
+  background: linear-gradient(180deg, var(--btn-face) 0%, var(--btn-face-lo) 100%);
+  border: 1px solid var(--chrome-edge);
   border-radius: 50%;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.65),
@@ -138,7 +131,7 @@
 }
 
 .round-btn:active:not(:disabled) {
-  background: linear-gradient(180deg, #d8c5aa 0%, #c8b092 100%);
+  background: linear-gradient(180deg, var(--btn-face-lo) 0%, var(--face-tan) 100%);
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.18);
   transform: translateY(1px);
 }
@@ -149,7 +142,7 @@
 }
 
 .round-btn:focus-visible {
-  outline: 2px solid #f6c76a;
+  outline: 2px solid var(--accent-amber);
   outline-offset: 2px;
 }
 
@@ -162,18 +155,14 @@
 }
 
 .status-bar {
-  flex-shrink: 0;
   margin: 0;
-  padding: 6px 10px;
+  padding: 5px 10px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  color: #efe3cf;
-  background: linear-gradient(180deg, #3f2f24 0%, #2b2119 100%);
-  border: 1px solid #1a1410;
+  color: var(--text-cream);
   border-radius: 4px;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .status-bar.error {

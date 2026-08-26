@@ -1,8 +1,17 @@
-.dial {
+:host {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   width: 100%;
-  flex: 0 0 auto;
+}
+
+.dial {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
 }
 
 .dial.disabled {
@@ -11,11 +20,12 @@
 
 .dial-window {
   display: flex;
-  flex: 0 0 auto;
+  flex: 1;
   flex-direction: column;
-  padding: 8px 12px 0;
-  background: linear-gradient(180deg, #f3ead8 0%, #e6d9c0 100%);
-  border: 2px solid #6b5344;
+  min-height: 0;
+  padding: 4px 8px 0;
+  background: linear-gradient(180deg, var(--face-cream-hi) 0%, var(--face-cream) 100%);
+  border: 2px solid var(--chrome-edge);
   border-bottom: none;
   border-radius: 4px 4px 0 0;
   box-shadow:
@@ -23,24 +33,14 @@
     inset 0 -2px 4px rgba(0, 0, 0, 0.08);
 }
 
-.dial-scale-label {
-  flex-shrink: 0;
-  margin-bottom: 4px;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 10px;
-  font-variant: small-caps;
-  letter-spacing: 0.12em;
-  color: var(--scale-ink);
-  text-align: center;
-}
-
 .dial-scale {
   display: flex;
-  flex: 0 0 auto;
+  flex: 1;
   flex-direction: column;
-  border: 1px solid #8a735f;
+  min-height: 0;
+  border: 1px solid var(--chrome-mid);
   border-radius: 2px;
-  background: linear-gradient(180deg, #faf4e8 0%, #efe3cf 100%);
+  background: linear-gradient(180deg, #faf4e8 0%, var(--face-cream) 100%);
   box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.12);
   cursor: pointer;
   outline: none;
@@ -57,7 +57,7 @@
 .numerals-row {
   position: relative;
   flex-shrink: 0;
-  height: 24px;
+  height: 20px;
   padding-inline: 2px;
   border-bottom: 1px solid rgba(107, 83, 68, 0.25);
   background: rgba(255, 255, 255, 0.18);
@@ -65,7 +65,7 @@
 
 .numeral {
   position: absolute;
-  top: 5px;
+  top: 4px;
   transform: translateX(-50%);
   font-family: Georgia, "Times New Roman", serif;
   font-size: 10px;
@@ -89,8 +89,8 @@
 
 .scale-track {
   position: relative;
-  flex-shrink: 0;
-  height: 68px;
+  flex: 1;
+  min-height: 56px;
 }
 
 .dial-svg {
@@ -114,7 +114,7 @@
 
 .scan-marker {
   position: absolute;
-  top: 32px;
+  top: 30px;
   width: 8px;
   height: 8px;
   margin-left: -4px;
@@ -137,7 +137,7 @@
 
 .preset-tick-hit {
   position: absolute;
-  top: 6px;
+  top: 4px;
   width: 14px;
   height: 32px;
   margin-left: -7px;
@@ -179,11 +179,11 @@
 }
 
 .preset-band {
-  --lane-height: 16px;
+  --lane-height: 15px;
   position: relative;
-  flex: 0 0 auto;
-  height: calc(var(--lane-count, 5) * var(--lane-height) + 14px);
-  padding: 4px 4px 6px;
+  flex-shrink: 0;
+  height: calc(var(--lane-count, 5) * var(--lane-height) + 10px);
+  padding: 2px 4px 4px;
   border-top: 1px solid rgba(107, 83, 68, 0.3);
   background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
@@ -191,7 +191,7 @@
 
 .label-slot {
   position: absolute;
-  top: 6px;
+  top: 4px;
   width: max-content;
   max-width: min(96px, 14vw);
   height: calc(var(--lane-count) * var(--lane-height));

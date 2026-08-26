@@ -1,16 +1,11 @@
-<div
-  class="dial"
-  [class.disabled]="disabled()"
->
+<div class="dial" [class.disabled]="disabled()">
   <div class="dial-window">
-    <div class="dial-scale-label">FM MHz</div>
-
     <div
       #track
       class="dial-scale"
       tabindex="0"
       role="slider"
-      aria-label="FM station dial"
+      aria-label="FM dial, megahertz"
       [attr.aria-valuemin]="87.5"
       [attr.aria-valuemax]="108"
       [attr.aria-valuenow]="pointerPercent()"
@@ -82,10 +77,7 @@
         </div>
       </div>
 
-      <div
-        class="preset-band"
-        [style.--lane-count]="laneCount"
-      >
+      <div class="preset-band" [style.--lane-count]="laneCount">
         @for (marker of presetMarkers(); track marker.station.id) {
           @if (marker.showLabel) {
             <button
@@ -104,9 +96,7 @@
                   [style.--leader-shift.%]="leaderOffset(marker)"
                 ></span>
               }
-              <span class="preset-label">
-                {{ marker.label }}
-              </span>
+              <span class="preset-label">{{ marker.label }}</span>
             </button>
           }
         }
