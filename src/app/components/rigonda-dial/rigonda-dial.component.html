@@ -1,17 +1,6 @@
 <div class="dial" [class.disabled]="disabled()">
   <div class="dial-window">
-    <div
-      #track
-      class="dial-scale"
-      tabindex="0"
-      role="slider"
-      aria-label="FM dial, megahertz"
-      [attr.aria-valuemin]="87.5"
-      [attr.aria-valuemax]="108"
-      [attr.aria-valuenow]="pointerPercent()"
-      (click)="onTrackClick($event)"
-      (keydown)="onTrackKeydown($event)"
-    >
+    <div class="dial-scale">
       <div class="numerals-row" aria-hidden="true">
         @for (numeral of numerals; track numeral.mhz) {
           <span
@@ -25,7 +14,18 @@
         }
       </div>
 
-      <div class="scale-track">
+      <div
+        #track
+        class="scale-track"
+        tabindex="0"
+        role="slider"
+        aria-label="FM dial, megahertz"
+        [attr.aria-valuemin]="87.5"
+        [attr.aria-valuemax]="108"
+        [attr.aria-valuenow]="pointerPercent()"
+        (click)="onTrackClick($event)"
+        (keydown)="onTrackKeydown($event)"
+      >
         <svg class="dial-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
           @for (tick of ticks; track tick.mhz) {
             <line
@@ -55,6 +55,7 @@
             [class.selected]="selectedId() === marker.station.id"
             [class.tick-only]="!marker.showLabel"
             [style.left.%]="marker.xPercent"
+            [style.width.%]="marker.hitHalfPercent * 2"
             [title]="marker.label"
             [attr.aria-label]="marker.label"
             (click)="selectStationById(marker.station.id, $event)"
@@ -90,10 +91,10 @@
               [attr.aria-label]="marker.label"
               (click)="selectStationById(marker.station.id, $event)"
             >
-              @if (leaderOffset(marker) !== 0) {
+              @if (marker.leaderShiftPx !== 0) {
                 <span
                   class="label-leader"
-                  [style.--leader-shift.%]="leaderOffset(marker)"
+                  [style.--leader-shift.px]="marker.leaderShiftPx"
                 ></span>
               }
               <span class="preset-label">{{ marker.label }}</span>

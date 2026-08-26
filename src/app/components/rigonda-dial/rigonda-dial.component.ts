@@ -152,10 +152,6 @@ export class RigondaDialComponent implements AfterViewInit {
     }
   }
 
-  leaderOffset(marker: { xPercent: number; labelXPercent: number }): number {
-    return marker.xPercent - marker.labelXPercent;
-  }
-
   selectStationById(id: string, event: Event): void {
     if (this.disabled()) {
       return;

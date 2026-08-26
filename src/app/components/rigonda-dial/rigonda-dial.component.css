@@ -42,16 +42,12 @@
   border-radius: 2px;
   background: linear-gradient(180deg, #faf4e8 0%, var(--face-cream) 100%);
   box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.12);
-  cursor: pointer;
-  outline: none;
-  touch-action: none;
   overflow: hidden;
 }
 
-.dial-scale:focus-visible {
-  box-shadow:
-    inset 0 2px 6px rgba(0, 0, 0, 0.12),
-    0 0 0 2px var(--needle-red);
+.scale-track:focus-visible {
+  outline: 2px solid var(--needle-red);
+  outline-offset: -2px;
 }
 
 .numerals-row {
@@ -91,6 +87,9 @@
   position: relative;
   flex: 1;
   min-height: 56px;
+  cursor: pointer;
+  outline: none;
+  touch-action: none;
 }
 
 .dial-svg {
@@ -138,12 +137,12 @@
 .preset-tick-hit {
   position: absolute;
   top: 4px;
-  width: 14px;
   height: 32px;
-  margin-left: -7px;
+  min-width: 3px;
   padding: 0;
   border: none;
   background: transparent;
+  transform: translateX(-50%);
   cursor: pointer;
   z-index: 3;
 }
@@ -189,12 +188,13 @@
   overflow: hidden;
 }
 
+/* One lane tall so hit areas match the visible chips and never stack. */
 .label-slot {
   position: absolute;
-  top: 4px;
+  top: calc(4px + var(--label-lane) * var(--lane-height));
   width: max-content;
   max-width: min(96px, 14vw);
-  height: calc(var(--lane-count) * var(--lane-height));
+  height: var(--lane-height);
   padding: 0;
   border: none;
   background: transparent;
@@ -210,7 +210,7 @@
 
 .label-leader {
   position: absolute;
-  top: calc(var(--label-lane) * var(--lane-height) - 6px);
+  top: -6px;
   left: calc(50% + var(--leader-shift));
   width: 1px;
   height: 8px;
@@ -219,13 +219,10 @@
 }
 
 .preset-label {
-  position: absolute;
-  top: calc(var(--label-lane) * var(--lane-height));
-  left: 50%;
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: min(96px, 14vw);
-  padding: 1px 4px;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 4px;
   border-radius: 2px;
   background: rgba(255, 252, 245, 0.72);
   overflow: hidden;

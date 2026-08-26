@@ -156,6 +156,9 @@ const LABEL_CHAR_WIDTH_PX = 5.4;
 const LABEL_PADDING_PX = 10;
 const LABEL_MIN_GAP_PX = 6;
 
+/** Widest half hit area for a tick, in dial percent (~7 px on a 720 px track). */
+const MAX_TICK_HIT_HALF_PERCENT = 1;
+
 export interface PresetMarker {
   station: FmStation;
   label: string;
@@ -166,6 +169,10 @@ export interface PresetMarker {
   labelTier: number;
   /** False when no lane has room — tick + tooltip only. */
   showLabel: boolean;
+  /** Half width of the tick hit area; never reaches a neighbouring tick. */
+  hitHalfPercent: number;
+  /** Horizontal distance from the label centre back to its own tick. */
+  leaderShiftPx: number;
 }
 
 export function clampLabelPercent(xPercent: number): number {
@@ -286,20 +293,41 @@ export function buildPresetMarkers(
     });
   }
 
-  return sorted.map((station) => {
+  const tickXs = sorted.map((station) => khzToPercent(station.frequencyKhz));
+  const width = trackWidthPx > 0 ? trackWidthPx : DEFAULT_TRACK_WIDTH_PX;
+
+  return sorted.map((station, index) => {
     const label = stationLabel(station);
-    const tickX = khzToPercent(station.frequencyKhz);
+    const tickX = tickXs[index];
     const placed = layout.get(station.id);
+    const labelX = placed?.labelXPercent ?? clampLabelPercent(tickX);
 
     return {
       station,
       label,
       xPercent: tickX,
-      labelXPercent: placed?.labelXPercent ?? clampLabelPercent(tickX),
+      labelXPercent: labelX,
       labelTier: placed?.labelTier ?? 0,
       showLabel: placed?.showLabel ?? true,
+      hitHalfPercent: tickHitHalfPercent(tickXs, index),
+      leaderShiftPx: ((tickX - labelX) / 100) * width,
     };
   });
+}
+
+/**
+ * Hit areas may not overlap, otherwise a click lands on whichever neighbour
+ * happens to paint last instead of the tick under the cursor.
+ */
+function tickHitHalfPercent(tickXs: number[], index: number): number {
+  const toPrev =
+    index > 0 ? (tickXs[index] - tickXs[index - 1]) / 2 : Infinity;
+  const toNext =
+    index < tickXs.length - 1
+      ? (tickXs[index + 1] - tickXs[index]) / 2
+      : Infinity;
+
+  return Math.min(toPrev, toNext, MAX_TICK_HIT_HALF_PERCENT);
 }
 
 export interface ScanMarker {
