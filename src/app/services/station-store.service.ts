@@ -2,6 +2,7 @@ import { Injectable, computed, signal } from "@angular/core";
 import { invoke } from "@tauri-apps/api/core";
 
 import { FmStation } from "../models/fm-station";
+import { correctStationFrequency } from "../utils/fine-tune";
 import { mergePreservedLabels } from "../utils/station-label-merge";
 
 function sortByFrequency(stations: FmStation[]): FmStation[] {
@@ -52,6 +53,21 @@ export class StationStoreService {
       this.stations.set(previous);
       throw error;
     }
+  }
+
+  async nudgeSelected(deltaKhz: number): Promise<FmStation | null> {
+    const station = this.selectedStation();
+    if (!station) {
+      return null;
+    }
+
+    const next = correctStationFrequency(station, deltaKhz, this.stations());
+    if (!next) {
+      return null;
+    }
+
+    await this.update(next);
+    return next;
   }
 
   async update(station: FmStation): Promise<void> {

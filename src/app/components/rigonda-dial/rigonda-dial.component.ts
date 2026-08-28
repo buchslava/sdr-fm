@@ -11,7 +11,7 @@ import {
   viewChild,
 } from "@angular/core";
 
-import { FmStation } from "../../models/fm-station";
+import { FmStation, formatMhz } from "../../models/fm-station";
 import {
   buildDialNumerals,
   buildDialTicks,
@@ -46,6 +46,7 @@ export class RigondaDialComponent implements AfterViewInit {
   readonly laneCount = LABEL_LANE_COUNT;
   readonly dragging = signal(false);
   readonly trackWidthPx = signal(0);
+  readonly formatMhz = formatMhz;
 
   readonly presetMarkers = computed(() =>
     buildPresetMarkers(this.stations(), this.trackWidthPx()),

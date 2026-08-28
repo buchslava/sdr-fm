@@ -59,19 +59,37 @@
 
 .readout {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   min-width: 0;
   white-space: nowrap;
 }
 
+.fine-tune {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.fine-tune-caption {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(239, 227, 207, 0.55);
+}
+
 .readout-freq {
   flex-shrink: 0;
+  min-width: 7.6em;
+  text-align: center;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 15px;
   font-weight: 700;
   color: var(--accent-amber);
   text-shadow: 0 0 8px rgba(246, 199, 106, 0.35);
+  font-variant-numeric: tabular-nums;
 }
 
 .readout-name {
@@ -128,6 +146,16 @@
 .round-btn svg {
   width: 16px;
   height: 16px;
+}
+
+.round-btn.round-btn-fine {
+  width: 24px;
+  height: 24px;
+}
+
+.round-btn.round-btn-fine svg {
+  width: 12px;
+  height: 12px;
 }
 
 .round-btn:active:not(:disabled) {

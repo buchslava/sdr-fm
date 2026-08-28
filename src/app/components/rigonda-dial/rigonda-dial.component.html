@@ -44,7 +44,7 @@
             class="scan-marker"
             [class.over-preset]="marker.overlapsPreset"
             [style.left.%]="marker.xPercent"
-            [title]="marker.station.name || (marker.station.frequencyKhz / 1000).toFixed(1) + ' MHz'"
+            [title]="marker.station.name || formatMhz(marker.station.frequencyKhz) + ' MHz'"
           ></div>
         }
 

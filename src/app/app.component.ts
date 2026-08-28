@@ -17,6 +17,11 @@ import {
 } from "./components/station-form-modal/station-form-modal.component";
 import { FmStation, formatMhz } from "./models/fm-station";
 import { StationStoreService } from "./services/station-store.service";
+import {
+  FINE_TUNE_STEP_KHZ,
+  correctStationFrequency,
+  nameIsFrequencyLabel,
+} from "./utils/fine-tune";
 
 interface ScanProgressEvent {
   phase: string;
@@ -45,10 +50,14 @@ export class AppComponent implements OnInit, OnDestroy {
 
   readonly statusLine = computed(() => this.error() || this.status());
   readonly crudDisabled = computed(() => this.isPlaying() || this.isScanning());
+  readonly fineTuneStepKhz = FINE_TUNE_STEP_KHZ;
+  readonly canFineTuneDown = computed(() => this.canFineTune(-FINE_TUNE_STEP_KHZ));
+  readonly canFineTuneUp = computed(() => this.canFineTune(FINE_TUNE_STEP_KHZ));
 
   readonly formatMhz = formatMhz;
 
   private unlistenScan: UnlistenFn | null = null;
+  private fineTuneChain: Promise<void> = Promise.resolve();
 
   async ngOnInit(): Promise<void> {
     try {
@@ -77,8 +86,15 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   showReadoutName(station: FmStation): boolean {
-    const name = station.name.trim();
-    return name.length > 0 && name !== formatMhz(station.frequencyKhz);
+    return station.name.trim().length > 0 && !nameIsFrequencyLabel(station);
+  }
+
+  onFineTune(deltaKhz: number): void {
+    this.fineTuneChain = this.fineTuneChain
+      .then(() => this.applyFineTune(deltaKhz))
+      .catch((err) => {
+        this.error.set(String(err));
+      });
   }
 
   onNoPresetNearby(): void {
@@ -102,11 +118,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
     this.error.set("");
     try {
-      this.status.set("Tuning...");
-      const message = await invoke<string>("start_fm", {
-        frequencyKhz: frequency,
-      });
-      this.status.set(message);
+      await this.retuneTo(frequency);
     } catch (err) {
       this.error.set(String(err));
     }
@@ -208,12 +220,8 @@ export class AppComponent implements OnInit, OnDestroy {
     }
 
     try {
-      this.status.set("Tuning...");
-      const message = await invoke<string>("start_fm", {
-        frequencyKhz: frequency,
-      });
+      await this.retuneTo(frequency);
       this.isPlaying.set(true);
-      this.status.set(message);
     } catch (err) {
       this.isPlaying.set(false);
       this.error.set(String(err));
@@ -276,5 +284,45 @@ export class AppComponent implements OnInit, OnDestroy {
     } finally {
       this.isScanning.set(false);
     }
+  }
+
+  private canFineTune(deltaKhz: number): boolean {
+    const station = this.store.selectedStation();
+    if (!station || this.isScanning()) {
+      return false;
+    }
+    return (
+      correctStationFrequency(station, deltaKhz, this.store.stations()) !==
+      null
+    );
+  }
+
+  private async applyFineTune(deltaKhz: number): Promise<void> {
+    if (this.isScanning()) {
+      return;
+    }
+
+    this.error.set("");
+
+    try {
+      const next = await this.store.nudgeSelected(deltaKhz);
+      if (!next) {
+        return;
+      }
+
+      if (this.isPlaying()) {
+        await this.retuneTo(next.frequencyKhz);
+      }
+    } catch (err) {
+      this.error.set(String(err));
+    }
+  }
+
+  private async retuneTo(frequencyKhz: number): Promise<void> {
+    this.status.set("Tuning...");
+    const message = await invoke<string>("start_fm", {
+      frequencyKhz,
+    });
+    this.status.set(message);
   }
 }
