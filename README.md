@@ -4,7 +4,7 @@ Desktop wideband FM receiver for **RTL-SDR**, built with **Tauri**, **Angular**,
 
 Tune FM broadcast stations, manage a personal preset list, and listen through your default audio output — in a Rigonda-inspired vintage console UI.
 
-![SDR FM icon](src-tauri/icons/icon.png)
+![SDR FM](doc/sdr-fm.png)
 
 ## Features
 
@@ -137,6 +137,13 @@ Angular UI  ──invoke──▶  Tauri commands  ──▶  SdrPlayer (Rust)
 - A **FutureSDR** flowgraph demodulates WBFM in-process: decimate → phase discriminator → resample → de-emphasis.
 - Audio plays through your default output via **cpal** (`AudioSink` at 48 kHz).
 - Station presets load/save through Tauri commands backed by a JSON config file in the user home directory.
+
+## Documentation
+
+| Document | About |
+|----------|-------|
+| [Radio theory for beginners](doc/RADIO_THEORY.md) ([UA](doc/RADIO_THEORY.uk.md)) | How broadcast FM works, from wavelengths to de-emphasis, and what the app does with it |
+| [FM auto-detection](doc/FM_AUTO_DETECTION.md) | How **Scan** finds stations: Welch spectrum, OS-CFAR, radiometer, blob clustering |
 
 ## Project layout
 
