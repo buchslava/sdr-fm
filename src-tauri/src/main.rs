@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    sdr_fm_lib::run()
+    sdr_kitchen_lib::run()
 }

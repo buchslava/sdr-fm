@@ -1,8 +1,8 @@
-# Radio theory for beginners — and how SDR FM uses it
+# Radio theory for beginners — and how SDR Kitchen uses it
 
 *Ukrainian version: **[Теорія радіо для початківців](RADIO_THEORY.uk.md)***
 
-This is a first-principles tour of broadcast radio, written so you can follow it without a degree — and then look up the academic names when you want them. Everything here is physics that [SDR FM](../README.md) actually performs when you press **Start**.
+This is a first-principles tour of broadcast radio, written so you can follow it without a degree — and then look up the academic names when you want them. Everything here is physics that [SDR Kitchen](../README.md) actually performs when you press **Start**.
 
 You do not need mathematics to enjoy this. Every formula below is followed by a sentence in plain language, and you are allowed to skip the formula and keep the sentence. There is a [glossary](#15-glossary) at the end, and a [myth-busting section](#12-eight-things-beginners-usually-get-wrong) for the things everybody gets wrong at first (including the author).
 
@@ -90,7 +90,7 @@ In plain language: **decibels count zeros instead of writing them.** What you ac
 | **+20 dB** | a hundred times | a different station entirely |
 | **−3 dB** | halved | the edge of noticing |
 
-Two consequences that matter when you use SDR FM:
+Two consequences that matter when you use SDR Kitchen:
 
 - **dB are relative.** "40 dB gain" means the amplifier multiplies power by 10 000. It does not say how loud anything is on its own.
 - **dB add where multiplication would happen.** Doubling twice (×4) is +3 dB +3 dB = +6 dB. This is why every plot of radio power is drawn in dB: the maths turns into arithmetic your eye can do.
@@ -110,7 +110,7 @@ The second job is the clever one, and it has a name: **heterodyning**. You mix t
 
 > **Historical aside.** Edwin Armstrong patented this **superheterodyne** receiver in 1918, and virtually every radio built since — your car, your phone, your microwave's leakage detector — is a descendant. Armstrong later invented wideband FM too, then spent his last years in patent litigation over it. Radio history is unreasonably dramatic.
 
-A kitchen radio does this with analog filters and a physical oscillator. SDR FM does the same job in two layers:
+A kitchen radio does this with analog filters and a physical oscillator. SDR Kitchen does the same job in two layers:
 
 | Layer | What it is | In this project |
 |-------|------------|-----------------|
@@ -144,7 +144,7 @@ That is exactly the job of Q. After heterodyning, a station **above** your LO an
 
 **Nyquist's theorem**: to reconstruct a signal you must sample at least twice as fast as its highest frequency. Sample too slowly and you get **aliasing** — the same effect that makes wagon wheels appear to spin backwards in old films. The camera samples 24 times a second; a wheel turning slightly slower than one spoke per frame looks like it is creeping in reverse. Undersampled radio does the same thing: a signal appears at a frequency where it simply is not.
 
-The RTL-SDR streams on the order of **1.024 million complex samples per second** by default (`SDR_FM_SAMPLE_RATE`). Because the samples are complex, that buys you roughly 1 MHz of spectrum to look at — about ±0.5 MHz around wherever the LO sits. That is the **IQ sample rate**, and it is *not* the 48 kHz your speakers use. Two different clocks, two different jobs.
+The RTL-SDR streams on the order of **1.024 million complex samples per second** by default (`SDR_KITCHEN_SAMPLE_RATE`). Because the samples are complex, that buys you roughly 1 MHz of spectrum to look at — about ±0.5 MHz around wherever the LO sits. That is the **IQ sample rate**, and it is *not* the 48 kHz your speakers use. Two different clocks, two different jobs.
 
 ---
 
@@ -174,7 +174,7 @@ A quiet whisper barely nudges the carrier. A loud snare drum shoves it almost 75
 
 > **The capture effect.** FM has a personality trait AM lacks: when two stations share a frequency, the stronger one does not blend with the weaker — it **erases** it. Roughly 6 dB of advantage is enough to win completely. This is why driving between two cities gives you one station, then a burst of mush, then the other station, rather than a permanent duet. It is also why "two stations on 101.5" is not something you will usually *hear*, even when both exist.
 
-SDR FM is a **wideband FM (WBFM)** receiver: it expects that ±75 kHz swing, not the tiny deviation of amateur NBFM handhelds.
+SDR Kitchen is a **wideband FM (WBFM)** receiver: it expects that ±75 kHz swing, not the tiny deviation of amateur NBFM handhelds.
 
 ---
 
@@ -232,7 +232,7 @@ L = \frac{(L{+}R) + (L{-}R)}{2}, \qquad R = \frac{(L{+}R) - (L{-}R)}{2}
 
 Backwards compatibility by addition and subtraction. Stereo costs you signal quality, though: that upper layer is quieter and noisier, which is why a fringe station hisses in stereo and cleans up the moment your radio gives up and drops to mono.
 
-SDR FM's *listening* path is currently **mono**: it demodulates FM to MPX, then plays the L+R part after de-emphasis. Stereo decode exists in the scan path only insofar as the RDS stack needs the pilot to recover the 57 kHz subcarrier.
+SDR Kitchen's *listening* path is currently **mono**: it demodulates FM to MPX, then plays the L+R part after de-emphasis. Stereo decode exists in the scan path only insofar as the RDS stack needs the pilot to recover the 57 kHz subcarrier.
 
 **RDS Program Service (PS)** is the eight-character name (`HIT FM  `) your car radio displays. It is genuine digital data — about 1 187.5 bits per second, roughly a thousandth of dial-up — riding on that 57 kHz subcarrier. At that speed, a station name takes a couple of seconds to arrive, which is why your car display sometimes fills in letter by letter after you tune.
 
@@ -300,7 +300,7 @@ While **Start** is active, clicking another preset does not rebuild the graph. `
 
 ### What the UI is doing
 
-The Angular dial is not a radio. It is a **front panel**: presets in `~/.sdr-fm/stations.json`, a selected frequency in kHz, Tauri `invoke("start_fm")` / `stop_fm`. All RF lives in Rust. The vintage look is a deliberate joke on this arrangement — a wooden Rigonda console whose scale pointer is a `<div>` and whose tuning capacitor is a JSON file.
+The Angular dial is not a radio. It is a **front panel**: presets in `~/.sdr-kitchen/stations.json`, a selected frequency in kHz, Tauri `invoke("start_fm")` / `stop_fm`. All RF lives in Rust. The vintage look is a deliberate joke on this arrangement — a wooden Rigonda console whose scale pointer is a `<div>` and whose tuning capacitor is a JSON file.
 
 ---
 
@@ -308,7 +308,7 @@ The Angular dial is not a radio. It is a **front panel**: presets in `~/.sdr-fm/
 
 | Rate | Role |
 |------|------|
-| **1.024 MHz** (default IQ) | Dongle streaming. Override with `SDR_FM_SAMPLE_RATE`. RTL-SDR **rejects** 300–900 kHz (e.g. 768 kHz). |
+| **1.024 MHz** (default IQ) | Dongle streaming. Override with `SDR_KITCHEN_SAMPLE_RATE`. RTL-SDR **rejects** 300–900 kHz (e.g. 768 kHz). |
 | **~256 kHz** | Channel after decimation — one WBFM haystack |
 | **48 kHz** | Sound card / `AudioSink` |
 
@@ -317,7 +317,7 @@ Two valid RTL2832 bands exist: ~225–300 kHz and ~0.9–3.2 MHz. The gap is a h
 Higher is not automatically better. A faster IQ rate shows you more spectrum at once and helps the scanner, but it also means more USB traffic, more CPU, and more chances for dropped samples on a small machine. On a Raspberry Pi, lowering the rate is the first thing to try when audio stutters:
 
 ```bash
-export SDR_FM_SAMPLE_RATE=256000
+export SDR_KITCHEN_SAMPLE_RATE=256000
 ```
 
 Gain is fixed at **40 dB** with AGC off during scan (and the playback source uses the same 40 dB). Automatic gain control sounds desirable, but it would breathe the noise floor up and down, confusing both your ears and every threshold the detector relies on. A fixed gain gives measurements that mean the same thing from one second to the next.
@@ -369,7 +369,7 @@ Because the grid is where the transmitter *is*, and your receiver may disagree a
 So the fine-tune buttons are the software equivalent of nudging a vernier dial while listening:
 
 - Each click moves the selected station by **5 kHz** — small enough to be a correction, not a channel change.
-- The new frequency is saved to `~/.sdr-fm/stations.json` **immediately**, so tomorrow's session starts where you left off.
+- The new frequency is saved to `~/.sdr-kitchen/stations.json` **immediately**, so tomorrow's session starts where you left off.
 - If audio is playing, the tuner follows at once via the same live-retune path from [§9](#9-from-antenna-to-speaker-in-this-app). No gap, no restart.
 - If the station's label is just its frequency, the label follows too. A real name like *Радіо П'ятниця* is left alone — it is yours, not a derived value.
 - The readout shows three decimals once you leave the raster (`103.305 MHz`), so you can always see that a preset has been hand-corrected.

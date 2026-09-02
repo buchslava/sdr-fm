@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 const FM_MIN_KHZ: u32 = 64_000;
 const FM_MAX_KHZ: u32 = 1_080_000;
+const CONFIG_DIR_NAME: &str = ".sdr-kitchen";
+const LEGACY_CONFIG_DIR_NAME: &str = ".sdr-fm";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,11 +62,15 @@ fn sorted_stations(stations: Vec<Station>) -> Vec<Station> {
 }
 
 pub fn config_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".sdr-fm"))
+    dirs::home_dir().map(|home| home.join(CONFIG_DIR_NAME))
 }
 
 pub fn stations_path() -> Option<PathBuf> {
     config_dir().map(|d| d.join("stations.json"))
+}
+
+fn legacy_stations_path() -> Option<PathBuf> {
+    dirs::home_dir().map(|home| home.join(LEGACY_CONFIG_DIR_NAME).join("stations.json"))
 }
 
 pub fn ensure_config_dir() -> Option<PathBuf> {
@@ -74,12 +80,25 @@ pub fn ensure_config_dir() -> Option<PathBuf> {
 }
 
 pub fn load_stations() -> Vec<Station> {
-    stations_path()
-        .and_then(|path| fs::read_to_string(path).ok())
+    let current_path = stations_path();
+    if current_path.as_ref().is_some_and(|path| path.exists()) {
+        return load_stations_from(current_path).unwrap_or_else(bundled_stations);
+    }
+
+    if let Some(stations) = load_stations_from(legacy_stations_path()) {
+        // Preserve existing presets across the SDR FM → SDR Kitchen rename.
+        let _ = save_stations(&stations);
+        return stations;
+    }
+
+    bundled_stations()
+}
+
+fn load_stations_from(path: Option<PathBuf>) -> Option<Vec<Station>> {
+    path.and_then(|path| fs::read_to_string(path).ok())
         .and_then(|data| serde_json::from_str::<StationsFile>(&data).ok())
         .filter(|file| !file.stations.is_empty())
         .map(|file| sorted_stations(file.stations))
-        .unwrap_or_else(bundled_stations)
 }
 
 pub fn validate_stations(stations: &[Station]) -> Result<(), String> {

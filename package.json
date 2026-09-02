@@ -1,5 +1,5 @@
 {
-  "name": "sdr-fm",
+  "name": "sdr-kitchen",
   "version": "0.1.0",
   "scripts": {
     "ng": "ng",
@@ -11,12 +11,12 @@
   },
   "private": true,
   "dependencies": {
-    "@angular/common": "^20.1.4",
-    "@angular/compiler": "^20.1.4",
-    "@angular/core": "^20.1.4",
-    "@angular/forms": "^20.1.4",
-    "@angular/platform-browser": "^20.1.4",
-    "@angular/router": "^20.1.4",
+    "@angular/common": "^20.3.30",
+    "@angular/compiler": "^20.3.30",
+    "@angular/core": "^20.3.30",
+    "@angular/forms": "^20.3.30",
+    "@angular/platform-browser": "^20.3.30",
+    "@angular/router": "^20.3.30",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
@@ -25,9 +25,9 @@
     "zone.js": "~0.15.1"
   },
   "devDependencies": {
-    "@angular/build": "^20.1.4",
-    "@angular/cli": "^20.1.4",
-    "@angular/compiler-cli": "^20.1.4",
+    "@angular/build": "^20.3.35",
+    "@angular/cli": "^20.3.35",
+    "@angular/compiler-cli": "^20.3.30",
     "@tauri-apps/cli": "^2",
     "typescript": "~5.8.3"
   }

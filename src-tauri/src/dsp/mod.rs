@@ -28,6 +28,11 @@ const RTL_SDR_PREFERRED_RATES: &[u32] = &[
 ];
 
 const PLATFORM_DEFAULT_SAMPLE_RATE: u32 = DEFAULT_SAMPLE_RATE;
+const SAMPLE_RATE_ENV: &str = "SDR_KITCHEN_SAMPLE_RATE";
+const LEGACY_SAMPLE_RATE_ENV: &str = "SDR_FM_SAMPLE_RATE";
+const ALSA_DEVICE_ENV: &str = "SDR_KITCHEN_ALSA_DEVICE";
+#[cfg(target_os = "linux")]
+const LEGACY_ALSA_DEVICE_ENV: &str = "SDR_FM_ALSA_DEVICE";
 
 /// True if `rate` is accepted by the RTL2832 resampler (librtlsdr rules).
 pub fn is_rtlsdr_valid_sample_rate(rate: u32) -> bool {
@@ -45,17 +50,24 @@ fn nearest_preferred_rate(requested: u32) -> u32 {
         .unwrap_or(DEFAULT_SAMPLE_RATE)
 }
 
-/// Effective IQ sample rate: `SDR_FM_SAMPLE_RATE` env override, else platform default.
+fn compatible_env_var(current: &str, legacy: &str) -> Option<String> {
+    std::env::var(current)
+        .ok()
+        .or_else(|| std::env::var(legacy).ok())
+}
+
+/// Effective IQ sample rate: `SDR_KITCHEN_SAMPLE_RATE` override, else platform default.
+/// The former `SDR_FM_SAMPLE_RATE` name remains supported for compatibility.
 /// Invalid RTL-SDR rates (e.g. 768_000) snap to the nearest supported rate.
 pub fn effective_sample_rate() -> u32 {
-    if let Ok(raw) = std::env::var("SDR_FM_SAMPLE_RATE") {
+    if let Some(raw) = compatible_env_var(SAMPLE_RATE_ENV, LEGACY_SAMPLE_RATE_ENV) {
         if let Ok(requested) = raw.parse::<u32>() {
             if is_rtlsdr_valid_sample_rate(requested) {
                 return requested;
             }
             let snapped = nearest_preferred_rate(requested);
             eprintln!(
-                "SDR_FM_SAMPLE_RATE={requested} is invalid for RTL-SDR; using {snapped} Hz \
+                "{SAMPLE_RATE_ENV}={requested} is invalid for RTL-SDR; using {snapped} Hz \
                  (valid bands: 225001–300000 and 900001–3200000)"
             );
             return snapped;
@@ -67,7 +79,7 @@ pub fn effective_sample_rate() -> u32 {
 /// Optional ALSA device override for cpal/rodio (Linux only).
 #[cfg(target_os = "linux")]
 pub fn configure_linux_audio_env() {
-    if let Ok(device) = std::env::var("SDR_FM_ALSA_DEVICE") {
+    if let Some(device) = compatible_env_var(ALSA_DEVICE_ENV, LEGACY_ALSA_DEVICE_ENV) {
         unsafe {
             std::env::set_var("ALSA_PCM_DEVICE", device);
         }
@@ -121,7 +133,7 @@ pub fn spawn_dsp_thread(
             quit_rx,
             ready_tx,
         ) {
-            eprintln!("SDR FM DSP error: {e}");
+            eprintln!("SDR Kitchen DSP error: {e}");
         }
     })
 }
@@ -130,7 +142,7 @@ pub fn list_output_devices() -> Result<Vec<String>, String> {
     Ok(vec![
         "Audio uses the system default output (cpal/ALSA).".into(),
         "List cards: aplay -l".into(),
-        "Override: export SDR_FM_ALSA_DEVICE=plughw:CARD,DEV".into(),
+        format!("Override: export {ALSA_DEVICE_ENV}=plughw:CARD,DEV"),
     ])
 }
 

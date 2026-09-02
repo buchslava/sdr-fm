@@ -25,7 +25,7 @@ pub fn disable_webview_spellcheck() {
     let _ = std::process::Command::new("defaults")
         .args([
             "write",
-            "com.sdrfm.app",
+            "com.sdrkitchen.desktop",
             "WebContinuousSpellCheckingEnabled",
             "-bool",
             "false",

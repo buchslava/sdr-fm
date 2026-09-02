@@ -155,7 +155,7 @@ On the strongest ~15 hits the app retunes with a **200 kHz LO offset** (so the s
 
 RDS is slow and optional. It must never be the reason a station is kept or dropped: plenty of real broadcasts are mute on PS.
 
-The UI phase is `"rds"`. Confirming the dialog **replaces** the preset list (`~/.sdr-fm/stations.json`). Existing names at nearby frequencies can be copied onto unnamed hits (frontend merge).
+The UI phase is `"rds"`. Confirming the dialog **replaces** the preset list (`~/.sdr-kitchen/stations.json`). Existing names at nearby frequencies can be copied onto unnamed hits (frontend merge).
 
 ---
 

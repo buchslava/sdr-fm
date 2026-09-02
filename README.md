@@ -1,16 +1,16 @@
-# SDR FM
+# SDR Kitchen
 
 Desktop wideband FM receiver for **RTL-SDR**, built with **Tauri**, **Angular**, and **FutureSDR**.
 
 Tune FM broadcast stations, manage a personal preset list, and listen through your default audio output — in a Rigonda-inspired vintage console UI.
 
-![SDR FM](doc/sdr-fm.png)
+![SDR Kitchen](doc/sdr-kitchen.png)
 
 ## Features
 
 - **RTL-SDR WBFM reception** — demodulate FM broadcast stations (64–108 MHz)
 - **Station presets** — bundled defaults, add/edit/remove, or **Scan** (power + RDS)
-- **Persisted config** — presets in `~/.sdr-fm/stations.json`
+- **Persisted config** — presets in `~/.sdr-kitchen/stations.json`
 - **Rigonda-style UI** — 760×440 console with horizontal FM dial, preset labels, scan markers, and round vintage controls
 - **Aller typeface** — bundled app font for a consistent look
 
@@ -105,8 +105,11 @@ The scan runs on a background thread with a **~90 s** budget so the UI stays res
 Presets are stored in:
 
 ```
-~/.sdr-fm/stations.json
+~/.sdr-kitchen/stations.json
 ```
+
+On first launch, SDR Kitchen automatically imports presets from the former
+`~/.sdr-fm/stations.json` location when the new file does not exist.
 
 ### Manage stations
 
@@ -130,7 +133,7 @@ Shows tuning state, success messages, and errors (device missing, invalid freque
 Angular UI  ──invoke──▶  Tauri commands  ──▶  SdrPlayer (Rust)
                               │
                               ├── FutureSDR flowgraph: RTL-SDR → WBFM demod → de-emphasis → audio
-                              └── ~/.sdr-fm/stations.json
+                              └── ~/.sdr-kitchen/stations.json
 ```
 
 - The Rust backend opens the RTL-SDR via **SoapySDR** (`driver=rtlsdr`).
@@ -179,7 +182,7 @@ This overwrites `src-tauri/icons/` (PNG, ICNS, ICO, and platform-specific assets
 
 Raspberry Pi runs **Linux on ARM** (typically `aarch64` on Pi 4/5 with 64-bit Raspberry Pi OS). Tauri produces a **Linux desktop binary** there. Apple Silicon Macs are also ARM, but they run macOS; a Mac build cannot run on a Pi.
 
-| Approach | Practical for SDR FM? |
+| Approach | Practical for SDR Kitchen? |
 |----------|------------------------|
 | **Native build on the Pi** (recommended) | Yes |
 | Cross-compile macOS → Linux ARM | No — SoapySDR, RTL-SDR, and WebKitGTK need Linux ARM libraries |
@@ -247,12 +250,12 @@ Audio uses FutureSDR’s stock **`AudioSink` at 48 kHz** (same pipeline as the s
 Tuned to 101.500 MHz (WBFM) (1024000 Hz IQ → 48000 Hz audio)
 ```
 
-If other apps play sound but SDR FM does not, point ALSA at your output (HDMI display, headphones, etc.):
+If other apps play sound but SDR Kitchen does not, point ALSA at your output (HDMI display, headphones, etc.):
 
 ```bash
 aplay -l
-export SDR_FM_ALSA_DEVICE=plughw:0,0   # card/device from aplay -l
-./sdr_fm
+export SDR_KITCHEN_ALSA_DEVICE=plughw:0,0   # card/device from aplay -l
+./sdr-kitchen
 ```
 
 If Start shows an error, read the status bar — audio/SDR failures are reported there.
@@ -261,7 +264,7 @@ If Start shows an error, read the status bar — audio/SDR failures are reported
 
 - First Rust build on a Pi can take a long time (30+ minutes).
 - FM demod is CPU-heavy; Pi 4/5 is recommended.
-- Default IQ sample rate is **1.024 MHz** on all platforms (required RTL-SDR band: not 768 kHz). For lower CPU on Pi try `export SDR_FM_SAMPLE_RATE=256000`.
+- Default IQ sample rate is **1.024 MHz** on all platforms (required RTL-SDR band: not 768 kHz). For lower CPU on Pi try `export SDR_KITCHEN_SAMPLE_RATE=256000`.
 - The macOS-only spellcheck workaround in the Rust backend is skipped automatically on Linux.
 
 ## Performance tuning
@@ -282,9 +285,9 @@ Default on all platforms: **1 024 000 Hz**.
 Override examples:
 
 ```bash
-export SDR_FM_SAMPLE_RATE=256000    # lower CPU on Pi (valid low band)
-export SDR_FM_SAMPLE_RATE=1024000   # default
-export SDR_FM_SAMPLE_RATE=2048000   # wider bandwidth, more CPU
+export SDR_KITCHEN_SAMPLE_RATE=256000    # lower CPU on Pi (valid low band)
+export SDR_KITCHEN_SAMPLE_RATE=1024000   # default
+export SDR_KITCHEN_SAMPLE_RATE=2048000   # wider bandwidth, more CPU
 npm run tauri dev
 ```
 
@@ -300,7 +303,7 @@ cargo install flamegraph
 
 # From src-tauri/ — profile while the app is receiving
 cd src-tauri
-cargo flamegraph --bin sdr_fm
+cargo flamegraph --bin sdr-kitchen
 ```
 
 Run the packaged app, start playback, tune a station, then stop. Open `flamegraph.svg` to see where CPU time goes (WBFM demod, resampling, SoapySDR read, etc.).
@@ -308,7 +311,7 @@ Run the packaged app, start playback, tune a station, then stop. Open `flamegrap
 For a release build with symbols:
 
 ```bash
-CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph --release --bin sdr_fm
+CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph --release --bin sdr-kitchen
 ```
 
 Station changes while playing use a live retune command instead of reopening the device, so switching presets should stay fast after the first Start.
@@ -321,7 +324,7 @@ Station changes while playing use a live retune command instead of reopening the
 | Shell | Tauri 2 |
 | SDR | FutureSDR, SoapySDR, RTL-SDR |
 | Audio | cpal / rodio via FutureSDR AudioSink |
-| Config | serde_json, `~/.sdr-fm/` |
+| Config | serde_json, `~/.sdr-kitchen/` |
 
 ## License
 

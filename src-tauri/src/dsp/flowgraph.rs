@@ -93,7 +93,7 @@ fn run_pipeline(
     let audio_sink = AudioSink::new(AUDIO_RATE, 1).map_err(|e| {
         format!(
             "Audio output failed at {AUDIO_RATE} Hz ({e}). \
-             On Linux try: aplay -l, then export SDR_FM_ALSA_DEVICE=plughw:CARD,DEV"
+             On Linux try: aplay -l, then export SDR_KITCHEN_ALSA_DEVICE=plughw:CARD,DEV"
         )
     })?;
 

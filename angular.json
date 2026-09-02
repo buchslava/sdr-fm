@@ -6,7 +6,7 @@
     "analytics": false
   },
   "projects": {
-    "sdr-fm": {
+    "sdr-kitchen": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -64,10 +64,10 @@
           },
           "configurations": {
             "production": {
-              "buildTarget": "sdr-fm:build:production"
+              "buildTarget": "sdr-kitchen:build:production"
             },
             "development": {
-              "buildTarget": "sdr-fm:build:development"
+              "buildTarget": "sdr-kitchen:build:development"
             }
           },
           "defaultConfiguration": "development"
