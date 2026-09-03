@@ -5,6 +5,11 @@ import { FmStation } from "../models/fm-station";
 import { correctStationFrequency } from "../utils/fine-tune";
 import { mergePreservedLabels } from "../utils/station-label-merge";
 
+interface StationsFile {
+  stations: FmStation[];
+  selectedStationId?: string | null;
+}
+
 function sortByFrequency(stations: FmStation[]): FmStation[] {
   return [...stations].sort((a, b) => a.frequencyKhz - b.frequencyKhz);
 }
@@ -23,34 +28,45 @@ export class StationStoreService {
   );
 
   async load(): Promise<void> {
-    const stations = await invoke<FmStation[]>("get_stations");
-    this.stations.set(sortByFrequency(stations));
+    const file = await invoke<StationsFile>("get_stations");
+    this.stations.set(sortByFrequency(file.stations ?? []));
+    this.selectedId.set(file.selectedStationId ?? null);
     this.ensureSelection();
+    if (this.selectedId() !== (file.selectedStationId ?? null)) {
+      await this.persist();
+    }
   }
 
   select(id: string): void {
+    if (this.selectedId() === id) {
+      return;
+    }
+
     this.selectedId.set(id);
+    void this.persist();
   }
 
   async replaceStations(stations: FmStation[]): Promise<void> {
     const merged = mergePreservedLabels(stations, this.stations());
     const next = sortByFrequency(merged);
-    await invoke("set_stations", { stations: next });
     this.stations.set(next);
     this.selectedId.set(null);
     this.ensureSelectionFromScan();
+    await this.persist();
   }
 
   async add(station: FmStation): Promise<void> {
     const previous = this.stations();
+    const previousId = this.selectedId();
     const next = sortByFrequency([...previous, station]);
 
     try {
-      await invoke("set_stations", { stations: next });
       this.stations.set(next);
       this.selectedId.set(station.id);
+      await this.persist();
     } catch (error) {
       this.stations.set(previous);
+      this.selectedId.set(previousId);
       throw error;
     }
   }
@@ -72,22 +88,25 @@ export class StationStoreService {
 
   async update(station: FmStation): Promise<void> {
     const previous = this.stations();
+    const previousId = this.selectedId();
     const next = sortByFrequency(
       previous.map((item) => (item.id === station.id ? station : item)),
     );
 
     try {
-      await invoke("set_stations", { stations: next });
       this.stations.set(next);
       this.selectedId.set(station.id);
+      await this.persist();
     } catch (error) {
       this.stations.set(previous);
+      this.selectedId.set(previousId);
       throw error;
     }
   }
 
   async remove(id: string): Promise<void> {
     const previous = sortByFrequency(this.stations());
+    const previousId = this.selectedId();
     const index = previous.findIndex((station) => station.id === id);
     if (index < 0) {
       return;
@@ -96,13 +115,28 @@ export class StationStoreService {
     const next = sortByFrequency(previous.filter((station) => station.id !== id));
 
     try {
-      await invoke("set_stations", { stations: next });
       this.stations.set(next);
       this.selectAfterRemoval(next, index);
+      await this.persist();
     } catch (error) {
       this.stations.set(previous);
+      this.selectedId.set(previousId);
       throw error;
     }
+  }
+
+  private persistQueue: Promise<void> = Promise.resolve();
+
+  private persist(): Promise<void> {
+    const stations = this.stations();
+    const selectedStationId = this.selectedId();
+    const write = this.persistQueue.then(async () => {
+      await invoke("set_stations", { stations, selectedStationId });
+    });
+    this.persistQueue = write.catch(() => {
+      /* keep the queue alive after a failed write */
+    });
+    return write;
   }
 
   private ensureSelection(): void {

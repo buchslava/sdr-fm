@@ -5,7 +5,7 @@ mod macos_menu;
 mod macos_spellcheck;
 mod sdr;
 
-use config::{load_stations, save_stations, Station};
+use config::{load_stations_file, save_stations, Station, StationsFile};
 use dsp::ScanProgress;
 use sdr::SdrPlayer;
 use tauri::{AppHandle, Emitter};
@@ -48,13 +48,16 @@ async fn scan_fm_band(
 }
 
 #[tauri::command]
-fn get_stations() -> Vec<Station> {
-    load_stations()
+fn get_stations() -> StationsFile {
+    load_stations_file()
 }
 
 #[tauri::command]
-fn set_stations(stations: Vec<Station>) -> Result<(), String> {
-    save_stations(&stations)
+fn set_stations(
+    stations: Vec<Station>,
+    selected_station_id: Option<String>,
+) -> Result<(), String> {
+    save_stations(&stations, selected_station_id)
 }
 
 #[tauri::command]

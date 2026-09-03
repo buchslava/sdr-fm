@@ -18,9 +18,12 @@ pub struct Station {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct StationsFile {
+#[serde(rename_all = "camelCase")]
+pub struct StationsFile {
     #[serde(default)]
-    stations: Vec<Station>,
+    pub stations: Vec<Station>,
+    #[serde(default)]
+    pub selected_station_id: Option<String>,
 }
 
 fn default_station(id: &str, name: &str, frequency_khz: u32) -> Station {
@@ -61,6 +64,25 @@ fn sorted_stations(stations: Vec<Station>) -> Vec<Station> {
     stations
 }
 
+fn sanitize_selected_station_id(
+    stations: &[Station],
+    selected_station_id: Option<String>,
+) -> Option<String> {
+    selected_station_id.filter(|id| stations.iter().any(|station| station.id == *id))
+}
+
+fn prepared_stations_file(
+    stations: Vec<Station>,
+    selected_station_id: Option<String>,
+) -> Result<StationsFile, String> {
+    let stations = sorted_stations(stations);
+    validate_stations(&stations)?;
+    Ok(StationsFile {
+        selected_station_id: sanitize_selected_station_id(&stations, selected_station_id),
+        stations,
+    })
+}
+
 pub fn config_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|home| home.join(CONFIG_DIR_NAME))
 }
@@ -79,26 +101,42 @@ pub fn ensure_config_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
-pub fn load_stations() -> Vec<Station> {
+pub fn load_stations_file() -> StationsFile {
     let current_path = stations_path();
     if current_path.as_ref().is_some_and(|path| path.exists()) {
-        return load_stations_from(current_path).unwrap_or_else(bundled_stations);
+        return load_stations_from(current_path).unwrap_or_else(bundled_stations_file);
     }
 
-    if let Some(stations) = load_stations_from(legacy_stations_path()) {
+    if let Some(file) = load_stations_from(legacy_stations_path()) {
         // Preserve existing presets across the SDR FM → SDR Kitchen rename.
-        let _ = save_stations(&stations);
-        return stations;
+        let _ = write_stations_file(&file);
+        return file;
     }
 
-    bundled_stations()
+    bundled_stations_file()
 }
 
-fn load_stations_from(path: Option<PathBuf>) -> Option<Vec<Station>> {
+fn bundled_stations_file() -> StationsFile {
+    StationsFile {
+        stations: bundled_stations(),
+        selected_station_id: None,
+    }
+}
+
+fn load_stations_from(path: Option<PathBuf>) -> Option<StationsFile> {
     path.and_then(|path| fs::read_to_string(path).ok())
         .and_then(|data| serde_json::from_str::<StationsFile>(&data).ok())
         .filter(|file| !file.stations.is_empty())
-        .map(|file| sorted_stations(file.stations))
+        .map(|file| {
+            let stations = sorted_stations(file.stations);
+            StationsFile {
+                selected_station_id: sanitize_selected_station_id(
+                    &stations,
+                    file.selected_station_id,
+                ),
+                stations,
+            }
+        })
 }
 
 pub fn validate_stations(stations: &[Station]) -> Result<(), String> {
@@ -130,18 +168,21 @@ pub fn validate_stations(stations: &[Station]) -> Result<(), String> {
     Ok(())
 }
 
-pub fn save_stations(stations: &[Station]) -> Result<(), String> {
-    let stations = sorted_stations(stations.to_vec());
-    validate_stations(&stations)?;
+pub fn save_stations(
+    stations: &[Station],
+    selected_station_id: Option<String>,
+) -> Result<(), String> {
+    let file = prepared_stations_file(stations.to_vec(), selected_station_id)?;
+    write_stations_file(&file)
+}
 
+fn write_stations_file(file: &StationsFile) -> Result<(), String> {
     let Some(dir) = ensure_config_dir() else {
         return Err("Home directory not found.".to_string());
     };
 
     let path = dir.join("stations.json");
-    let file = StationsFile { stations };
-
-    let data = serde_json::to_string_pretty(&file)
+    let data = serde_json::to_string_pretty(file)
         .map_err(|e| format!("Failed to serialize stations: {e}"))?;
 
     fs::write(path, data).map_err(|e| format!("Failed to write stations: {e}"))
@@ -173,5 +214,28 @@ mod tests {
         ]);
         assert_eq!(stations[0].frequency_khz, 88_000);
         assert_eq!(stations[1].frequency_khz, 101_500);
+    }
+
+    #[test]
+    fn old_stations_json_has_no_selected_id() {
+        let file: StationsFile = serde_json::from_str(
+            r#"{"stations":[{"id":"a","name":"A","frequencyKhz":88000}]}"#,
+        )
+        .unwrap();
+        assert!(file.selected_station_id.is_none());
+        assert_eq!(file.stations[0].id, "a");
+    }
+
+    #[test]
+    fn drops_selected_id_when_station_is_gone() {
+        let stations = vec![default_station("a", "A", 88_000)];
+        assert_eq!(
+            sanitize_selected_station_id(&stations, Some("missing".into())),
+            None
+        );
+        assert_eq!(
+            sanitize_selected_station_id(&stations, Some("a".into())),
+            Some("a".into())
+        );
     }
 }
